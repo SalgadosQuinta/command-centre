@@ -2033,7 +2033,65 @@ function addDays(dateStr,n){ const d=new Date(dateStr+"T00:00:00"); d.setDate(d.
 function money(cur,n){ const v=Math.round(n*100)/100; return esc(cur)+" "+(v<0?"−":"")+Math.abs(v).toFixed(2); }
 function sumsHTML(s,emptyText){ const ks=Object.keys(s); return ks.length?ks.map(c=>`<div style="font-size:20px;font-weight:650;font-family:var(--mono)">${money(c,s[c])}</div>`).join(""):`<div style="font-size:20px;font-weight:650;font-family:var(--mono);color:var(--faint)">${emptyText||"—"}</div>`; }
 
+async function sha256(str){
+  const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+function financeLocked(){ return !!AppState.data.settings.financePin && !AppState.financeUnlocked; }
+function openPinSetup(){
+  const has=!!AppState.data.settings.financePin;
+  $("#modalHost").innerHTML=`<div class="overlay" id="ovPin"><div class="modal" style="max-width:400px">
+    <h2><span class="eyebrow">${has?"Change or remove PIN":"Set a Finance PIN"}</span></h2>
+    <p style="color:var(--muted);font-size:12.5px;margin:6px 0 4px">A 4-digit PIN that must be entered before the Finance view opens on this or any device using your data. It's a privacy screen against casual eyes, not encryption.</p>
+    ${has?`<div class="field"><label>Current PIN</label><input id="pinCur" inputmode="numeric" maxlength="4" autocomplete="off"></div>`:""}
+    <div class="field"><label>New 4-digit PIN (leave blank to remove)</label><input id="pinNew" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+    <div class="modalfoot"><button class="btn" id="pinCancel">Cancel</button><button class="btn primary" id="pinSave">Save</button></div>
+  </div></div>`;
+  $("#pinCancel").onclick=closeModal;
+  $("#ovPin").addEventListener("click",e=>{ if(e.target.id==="ovPin") closeModal(); });
+  $("#pinSave").onclick=async()=>{
+    if(has){
+      const cur=await sha256($("#pinCur").value.trim());
+      if(cur!==AppState.data.settings.financePin){ toast("Current PIN is wrong","warn"); return; }
+    }
+    const nv=$("#pinNew").value.trim();
+    if(nv===""){ AppState.data.settings.financePin=null; AppState.financeUnlocked=true; markDirty(); closeModal(); render(); toast("PIN removed","ok"); return; }
+    if(!/^\d{4}$/.test(nv)){ toast("PIN must be exactly 4 digits","warn"); return; }
+    AppState.data.settings.financePin=await sha256(nv);
+    AppState.financeUnlocked=true; markDirty(); closeModal(); render(); toast("PIN set","ok");
+  };
+}
+function financeLockHTML(){
+  return `
+  <div class="viewhead"><div><h1>Finance</h1><div class="sub">Locked</div></div></div>
+  <div class="card" style="max-width:360px;margin:40px auto;text-align:center">
+    <div class="eyebrow" style="display:block;margin-bottom:10px">Enter your 4-digit PIN</div>
+    <input id="pinEntry" inputmode="numeric" maxlength="4" autocomplete="off" style="font-size:26px;text-align:center;letter-spacing:12px;font-family:var(--mono)" autofocus>
+    <div id="pinMsg" class="mono" style="font-size:11px;color:var(--danger);min-height:16px;margin-top:8px"></div>
+    <button class="btn primary" id="pinGo" style="margin-top:6px;width:100%">Unlock</button>
+  </div>`;
+}
+function monthKey(s){ return String(s||"").slice(0,7); }
+function financeAnalysis(){
+  const f=FinanceService.data();
+  const byMonth={}; // {YYYY-MM: {cur:{in,out}}}
+  const add=(mk,cur,field,amt)=>{ if(!mk||mk.length!==7) return; byMonth[mk]=byMonth[mk]||{}; byMonth[mk][cur]=byMonth[mk][cur]||{in:0,out:0}; byMonth[mk][cur][field]+=parseFloat(amt||0); };
+  f.income.forEach(x=>{
+    if(x.status==="received"&&x.receivedOn) add(monthKey(x.receivedOn),x.currency,"in",x.amount);
+    (x.receivedHistory||[]).forEach(r=>add(monthKey(r.receivedOn),r.currency||x.currency,"in",r.amount));
+  });
+  f.outgoings.forEach(x=>{
+    (x.paidHistory||[]).forEach(p=>add(monthKey(p.paidOn),p.currency||x.currency,"out",p.amount));
+  });
+  const months=Object.keys(byMonth).sort().reverse().slice(0,6);
+  // category totals (paid, last 90 days)
+  const cutoff=addDays(todayStr(),-90);
+  const cats={};
+  f.outgoings.forEach(x=>{(x.paidHistory||[]).forEach(p=>{ if((p.paidOn||"")>=cutoff){ const k=(x.category||"Uncategorised")+"|"+(p.currency||x.currency); cats[k]=(cats[k]||0)+parseFloat(p.amount||0); }});});
+  return {byMonth,months,cats};
+}
 UI.finance = function(){
+  if(financeLocked()) return financeLockHTML();
   const f=FinanceService.data();
   const tStr=todayStr();
   const in30=FinanceService.expectedIn(30), in60=FinanceService.expectedIn(60), out30=FinanceService.committedOut(30);
@@ -2044,7 +2102,7 @@ UI.finance = function(){
   const recBadge=r=>r&&r!=="none"?`<span class="badge">${esc(r)}</span>`:"";
   return `
   <div class="viewhead"><div><h1>Finance</h1><div class="sub">Revenue you're driving towards, and what's committed to go out</div></div>
-    <div class="viewactions"><button class="btn" id="finAddOut">+ Payment to make</button><button class="btn primary" id="finAddInc">+ Expected revenue</button></div></div>
+    <div class="viewactions"><button class="btn ghost" id="finPin" title="Protect this view with a 4-digit PIN">${AppState.data.settings.financePin?"🔒 PIN":"Set PIN"}</button><button class="btn" id="finAddOut">+ Payment to make</button><button class="btn primary" id="finAddInc">+ Expected revenue</button></div></div>
   <div class="grid c4" style="margin-bottom:16px">
     <div class="card"><div class="eyebrow">Expected in — 30 days</div>${sumsHTML(in30,"nothing yet")}</div>
     <div class="card"><div class="eyebrow">Expected in — 60 days</div>${sumsHTML(in60,"nothing yet")}</div>
@@ -2089,7 +2147,38 @@ UI.finance = function(){
       ${paidOuts.length?`<div class="grouphead"><span class="eyebrow">Settled one-offs</span></div>
         <div style="opacity:.6">${paidOuts.slice(0,5).map(x=>`<div style="padding:5px 0;font-size:12px;color:var(--faint)">✓ ${esc(x.name)} — ${money(x.currency,parseFloat(x.amount||0))}</div>`).join("")}</div>`:""}
     </div>
-  </div>`;
+  </div>
+  ${(()=>{
+    const a=financeAnalysis();
+    if(!a.months.length&&!Object.keys(a.cats).length) return "";
+    const mName=mk=>{const d=new Date(mk+"-01T00:00:00");return d.toLocaleDateString("en-GB",{month:"short",year:"numeric"});};
+    const rows=a.months.map(mk=>{
+      const curs=a.byMonth[mk];
+      return Object.keys(curs).map(cur=>{
+        const v=curs[cur]; const net=v.in-v.out;
+        return `<tr><td class="mono" style="font-size:11.5px;white-space:nowrap">${esc(mName(mk))}</td>
+          <td class="mono" style="font-size:11.5px">${esc(cur)}</td>
+          <td class="mono" style="font-size:11.5px;text-align:right;color:var(--ok)">${v.in?money(cur,v.in):"—"}</td>
+          <td class="mono" style="font-size:11.5px;text-align:right;color:var(--danger)">${v.out?"−"+money(cur,v.out):"—"}</td>
+          <td class="mono" style="font-size:11.5px;text-align:right;color:${net<0?"var(--danger)":"var(--ok)"}">${money(cur,net)}</td></tr>`;
+      }).join("");
+    }).join("");
+    const catRows=Object.keys(a.cats).sort((x,y)=>a.cats[y]-a.cats[x]).slice(0,8).map(k=>{
+      const [name,cur]=k.split("|");
+      return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px"><span>${esc(name)}</span><span class="mono" style="font-size:11.5px;color:var(--danger)">−${money(cur,a.cats[k])}</span></div>`;
+    }).join("");
+    return `<div class="grid c2" style="margin-top:14px">
+      <div class="card">
+        <h2><span class="eyebrow">Monthly in / out — actuals</span></h2>
+        <p style="color:var(--faint);font-size:11.5px;margin-bottom:6px">Built from what you mark received and paid — your regular salary and retainers accumulate here month by month.</p>
+        ${a.months.length?`<table class="plain"><thead><tr><th>Month</th><th></th><th style="text-align:right">In</th><th style="text-align:right">Out</th><th style="text-align:right">Net</th></tr></thead><tbody>${rows}</tbody></table>`:`<p style="color:var(--muted);font-size:12.5px">Nothing recorded yet — mark items received or paid and the history builds itself.</p>`}
+      </div>
+      <div class="card">
+        <h2><span class="eyebrow">Where it goes — last 90 days</span></h2>
+        ${catRows||`<p style="color:var(--muted);font-size:12.5px">No paid outgoings in the last 90 days yet. Categories on your payments feed this breakdown.</p>`}
+      </div>
+    </div>`;
+  })()}`;
 };
 function openIncomeEditor(id){
   const x=id?FinanceService.get("income",id):null;
@@ -2490,6 +2579,20 @@ function bindView(){
   if(v==="focus"){ fillFocusMoney(); const ch=$("#coachHide"); if(ch) ch.onclick=()=>{ localStorage.setItem("gtdcc-coach-hide",todayStr()); render(); }; }
   if(v==="people"){ fillPeople(); const pr=$("#pplRefresh"); if(pr) pr.onclick=fillPeople; const pa=$("#pplAddBtn"); if(pa) pa.onclick=openAddPerson; }
   $$("#view [data-note]").forEach(el=>el.addEventListener("click",()=>openNoteEditor(el.dataset.note)));
+  const fp=$("#finPin"); if(fp) fp.onclick=openPinSetup;
+  const pg=$("#pinGo");
+  if(pg){
+    const tryPin=async()=>{
+      const v=$("#pinEntry").value.trim();
+      if(!/^\d{4}$/.test(v)){ $("#pinMsg").textContent="4 digits"; return; }
+      if(await sha256(v)===AppState.data.settings.financePin){ AppState.financeUnlocked=true; render(); }
+      else { $("#pinMsg").textContent="Wrong PIN"; $("#pinEntry").value=""; $("#pinEntry").focus(); }
+    };
+    pg.onclick=tryPin;
+    $("#pinEntry").addEventListener("keydown",e=>{ if(e.key==="Enter") tryPin(); });
+    $("#pinEntry").addEventListener("input",()=>{ if($("#pinEntry").value.length===4) tryPin(); });
+    setTimeout(()=>{const pe=$("#pinEntry"); if(pe) pe.focus();},50);
+  }
   const fa=$("#finAddInc"); if(fa) fa.onclick=()=>openIncomeEditor();
   const fo=$("#finAddOut"); if(fo) fo.onclick=()=>openOutgoingEditor();
   $$("#view [data-received]").forEach(b=>b.onclick=()=>{ FinanceService.markReceived(b.dataset.received); render(); toast("Marked received","ok"); });
