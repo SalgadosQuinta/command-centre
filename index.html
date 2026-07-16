@@ -215,15 +215,48 @@ main#view{overflow-y:auto;padding:22px 26px 60px;background:var(--bg)}
 /* ---- responsive ---- */
 #mobilenav{display:none}
 @media(max-width:860px){
-  #app.ready{grid-template-columns:1fr;grid-template-rows:52px 1fr 54px}
+  #app.ready{grid-template-columns:1fr;grid-template-rows:auto 1fr calc(56px + env(safe-area-inset-bottom,0px))}
   nav.rail{display:none}
-  #mobilenav{display:flex;grid-row:3;border-top:1px solid var(--line);background:var(--bg2);justify-content:space-around;align-items:center}
-  #mobilenav .navbtn{flex-direction:column;gap:2px;font-size:10px;padding:6px 4px;width:auto}
-  main#view{padding:16px 14px 70px}
-  .drawer{width:100%}
-  #globalSearch{max-width:none}
+  #mobilenav{display:flex;grid-row:3;border-top:1px solid var(--line);background:var(--bg2);justify-content:space-around;align-items:stretch;padding-bottom:env(safe-area-inset-bottom,0px)}
+  #mobilenav .navbtn{flex:1;flex-direction:column;justify-content:center;gap:2px;font-size:9.5px;padding:7px 2px;width:auto;border-radius:0}
+  #mobilenav .navbtn.active{color:var(--accent);background:none}
+  main#view{padding:14px 12px 24px}
+  .drawer{width:100%;border-left:none;padding:16px 14px calc(20px + env(safe-area-inset-bottom,0px))}
+  #globalSearch{max-width:none;min-width:0;flex:1}
   .brand span{display:none}
+  /* topbar: two compact rows, nothing lost */
+  header.topbar{flex-wrap:wrap;row-gap:6px;padding:8px 10px;height:auto}
+  .brand b{font-size:13.5px}
+  .savebar{gap:6px}
+  #saveStatus{display:none}
+  #modePillText{max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* views */
+  .viewhead{flex-direction:column;align-items:stretch;gap:8px;margin-bottom:12px}
+  .viewhead h1{font-size:19px}
+  .viewactions .btn{flex:1;text-align:center}
+  .fieldrow{grid-template-columns:1fr}
+  .filterbar select{flex:1;min-width:46%}
+  /* modals become full-screen sheets */
+  .overlay{padding:0;align-items:stretch}
+  .modal{max-width:100%;width:100%;max-height:100dvh;height:100dvh;border-radius:0;padding:16px 14px calc(20px + env(safe-area-inset-bottom,0px))}
+  #palette .modal{height:auto;max-height:70dvh;border-radius:0 0 12px 12px}
+  .modalfoot{position:sticky;bottom:0;background:var(--panel);padding-top:10px;margin-top:14px;flex-wrap:wrap}
+  .modalfoot .btn{flex:1 1 auto;text-align:center}
+  /* tables scroll sideways instead of breaking the layout */
+  .card{max-width:100%}
+  .tablewrap,.card:has(> table.plain){overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table.plain{min-width:520px}
+  /* calendar fits the screen */
+  .calcell{min-height:56px;padding:3px 4px;font-size:10.5px}
+  .calcell .evt{display:none}
+  .calcell .evtdots{display:flex}
+  /* touch targets */
+  .btn.sm{padding:8px 11px}
+  .trow{padding-top:9px;padding-bottom:9px}
 }
+/* calendar event dots (mobile) */
+.calcell .evtdots{display:none;gap:3px;flex-wrap:wrap;margin-top:3px}
+.calcell .evtdots i{width:7px;height:7px;border-radius:50%;background:var(--accent);display:block}
 .kbd{font-family:var(--mono);font-size:10.5px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;padding:0 5px;color:var(--muted)}
 table.plain{width:100%;border-collapse:collapse;font-size:13px}
 table.plain th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line2)}
@@ -299,7 +332,7 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
     <button class="navbtn" data-view="inbox">▤<br>Inbox</button>
     <button class="navbtn" data-view="next">▶<br>Next</button>
     <button class="navbtn" data-view="projects">▣<br>Projects</button>
-    <button class="navbtn" data-view="review">↻<br>Review</button>
+    <button class="navbtn" id="mobMore">☰<br>More</button>
   </nav>
 </div>
 
@@ -1166,7 +1199,12 @@ UI.calendar = function(){
     const push=(ds,kind)=>{ if(!ds) return; (evByDate[ds]=evByDate[ds]||[]).push({t,kind}); };
     push(t.scheduledDate,"sched"); if(t.dueDate&&t.dueDate!==t.scheduledDate) push(t.dueDate,"due");
   });
-  const cellEvents = ds => (evByDate[ds]||[]).map(e=>`<div class="calev" data-task="${esc(e.t.id)}" title="${esc(e.t.title)}" style="${e.kind==="due"?"border-left-color:var(--danger)":""}">${e.kind==="due"?"⚑ ":""}${esc(e.t.title)}</div>`).join("");
+  const cellEvents = ds => {
+    const evs=evByDate[ds]||[];
+    if(!evs.length) return "";
+    return evs.map(e=>`<div class="calev evt" data-task="${esc(e.t.id)}" title="${esc(e.t.title)}" style="${e.kind==="due"?"border-left-color:var(--danger)":""}">${e.kind==="due"?"⚑ ":""}${esc(e.t.title)}</div>`).join("")
+      + `<div class="evtdots">${evs.slice(0,6).map(e=>`<i style="${e.kind==="due"?"background:var(--danger)":""}"></i>`).join("")}</div>`;
+  };
   let body="";
   if(mode==="month"){
     const y=cur.getFullYear(), m=cur.getMonth();
@@ -1987,6 +2025,22 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $("#themeBtn").onclick=toggleTheme;
   $("#captureBtn").onclick=()=>UI.captureModal();
   $$("nav .navbtn,[id=mobilenav] .navbtn").forEach(b=>{ if(b.dataset.view) b.addEventListener("click",()=>go(b.dataset.view)); });
+  const mm=$("#mobMore");
+  if(mm) mm.addEventListener("click",()=>{
+    const views=[["clarify","Clarify"],["waiting","Waiting for"],["calendar","Calendar"],["someday","Someday / Maybe"],["reference","Reference"],["review","Review"],["settings","Data & settings"]];
+    $("#modalHost").innerHTML=`<div class="overlay" id="ovMore"><div class="modal" style="max-width:420px">
+      <h2><span class="eyebrow">All views</span></h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+        ${views.map(v=>`<button class="btn" data-mnav="${v[0]}" style="padding:13px 8px;text-align:centre">${v[1]}</button>`).join("")}
+        <button class="btn primary" data-mcapture style="grid-column:1/3;padding:13px 8px">+ Quick capture</button>
+      </div>
+      <div class="modalfoot"><button class="btn" id="moreClose">Close</button></div>
+    </div></div>`;
+    $("#moreClose").onclick=closeModal;
+    $("#ovMore").addEventListener("click",e=>{ if(e.target.id==="ovMore") closeModal(); });
+    $$("#modalHost [data-mnav]").forEach(x=>x.onclick=()=>{ closeModal(); go(x.dataset.mnav); });
+    const qc=$("#modalHost [data-mcapture]"); if(qc) qc.onclick=()=>{ closeModal(); UI.captureModal(); };
+  });
 
   // Search
   const gs=$("#globalSearch");

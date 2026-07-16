@@ -90,6 +90,27 @@ a{color:var(--accent)}
 .fieldrow>*{flex:1}
 details.newtask summary{cursor:pointer;font-size:13px;color:var(--accent);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;font-size:11px;list-style:none;padding:2px 0}
 details.newtask summary::-webkit-details-marker{display:none}
+/* modals */
+.overlay{position:fixed;inset:0;background:rgba(6,8,10,.55);display:flex;align-items:flex-start;justify-content:center;padding:6vh 14px;z-index:30;backdrop-filter:blur(2px)}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:100%;max-width:460px;max-height:88vh;overflow-y:auto;padding:16px}
+.modalfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+@media(max-width:600px){
+  .overlay{padding:0;align-items:stretch}
+  .modal{max-width:100%;max-height:100dvh;height:100dvh;border-radius:0;padding:16px 14px calc(18px + env(safe-area-inset-bottom,0px))}
+  .modalfoot{position:sticky;bottom:0;background:var(--panel);padding-top:10px}
+  .modalfoot .btn{flex:1;text-align:center}
+}
+/* desktop layout: tabs across the top, wider workspace, two-column sections */
+@media(min-width:861px){
+  .tabs{top:0;bottom:auto;border-top:none;border-bottom:1px solid var(--line);justify-content:center;gap:6px}
+  .tabs button{flex:0 0 auto;padding:13px 22px;font-size:11px}
+  .tabs .n{display:none}
+  .wrap{max-width:980px;padding:70px 20px 40px}
+  .desk2{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+  .desk2>.card{margin-top:12px}
+  .calcell{min-height:92px;font-size:12px}
+  .task{margin:14px 0}
+}
 </style>
 </head>
 <body>
@@ -121,6 +142,7 @@ details.newtask summary::-webkit-details-marker{display:none}
   </div>
 </div>
 
+<div id="modalHost"></div>
 <div class="tabs hidden" id="tabs">
   <button data-tab="inbox" class="on"><span class="n">▤</span>Inbox</button>
   <button data-tab="mine"><span class="n">✓</span>My tasks</button>
@@ -317,6 +339,7 @@ function moneyHTML(){
   const bal=balances();
   const openTasks=ALL.filter(t=>!isClosed(t));
   return `
+  <div class="desk2">
   <div class="card">
     <div class="eyebrow">Balance you hold</div>
     ${Object.keys(bal).length?Object.keys(bal).map(c=>{const v=Math.round(bal[c]*100)/100;
@@ -334,6 +357,7 @@ function moneyHTML(){
     <label>Related task (optional)</label><select id="spTask"><option value="">—</option>${openTasks.map(t=>`<option value="${esc(t.id)}">${esc(t.title)}</option>`).join("")}</select>
     <label>Receipt photo (optional)</label><input id="spFile" type="file" accept="image/*" capture="environment">
     <div class="row" style="margin-top:12px"><button class="btn primary" id="spSave">Record spend</button></div>
+  </div>
   </div>
   <div class="card">
     <div class="eyebrow">History</div>
@@ -367,12 +391,44 @@ async function addMine(){
     else toast(e.message);
   }
 }
+function closeModal(){$("#modalHost").innerHTML="";}
 function editMine(t){
-  const title=prompt("Task title:",t.title); if(title===null)return;
-  const category=prompt("Category:",t.category||""); if(category===null)return;
-  const due=prompt("Due date (YYYY-MM-DD, blank for none):",t.due_date||""); if(due===null)return;
-  patchTask(t.id,{title:title.trim()||t.title,category:category.trim()||null,due_date:due.trim()||null})
-    .then(()=>{renderApp();toast("Updated");}).catch(e=>toast(e.message));
+  const cats=categories();
+  $("#modalHost").innerHTML=`<div class="overlay" id="ovEdit"><div class="modal">
+    <div class="eyebrow">Edit task</div>
+    <label>Title</label><input id="emTitle" value="${esc(t.title)}">
+    <div class="fieldrow">
+      <div><label>Category</label><input id="emCat" list="emCatList" value="${esc(t.category||"")}"><datalist id="emCatList">${cats.map(x=>`<option value="${esc(x)}">`).join("")}</datalist></div>
+      <div><label>Due date</label><input id="emDue" type="date" value="${esc(t.due_date||"")}"></div>
+    </div>
+    <label>Priority</label><select id="emPrio">${["normal","high","low"].map(p=>`<option value="${p}" ${t.priority===p?"selected":""}>${p[0].toUpperCase()+p.slice(1)}</option>`).join("")}</select>
+    <label>Notes</label><textarea id="emNotes" rows="3">${esc(t.notes||"")}</textarea>
+    <div class="modalfoot"><button class="btn" id="emCancel">Cancel</button><button class="btn primary" id="emSave">Save</button></div>
+  </div></div>`;
+  $("#emCancel").onclick=closeModal;
+  $("#ovEdit").addEventListener("click",e=>{if(e.target.id==="ovEdit")closeModal();});
+  $("#emTitle").focus();
+  $("#emSave").onclick=()=>{
+    patchTask(t.id,{title:$("#emTitle").value.trim()||t.title,category:$("#emCat").value.trim()||null,
+      due_date:$("#emDue").value||null,priority:$("#emPrio").value,notes:$("#emNotes").value.trim()||null})
+      .then(()=>{closeModal();renderApp();toast("Updated");}).catch(e=>toast(e.message));
+  };
+}
+function openComment(t){
+  $("#modalHost").innerHTML=`<div class="overlay" id="ovCom"><div class="modal">
+    <div class="eyebrow">Add comment</div>
+    <div class="sub" style="margin:6px 0 2px">${esc(t.title)}</div>
+    <label>Comment</label><textarea id="cmText" rows="4" placeholder="e.g. Shop was closed, going back tomorrow"></textarea>
+    <div class="modalfoot"><button class="btn" id="cmCancel">Cancel</button><button class="btn primary" id="cmSave">Add comment</button></div>
+  </div></div>`;
+  $("#cmCancel").onclick=closeModal;
+  $("#ovCom").addEventListener("click",e=>{if(e.target.id==="ovCom")closeModal();});
+  $("#cmText").focus();
+  $("#cmSave").onclick=async()=>{
+    const text=$("#cmText").value.trim(); if(!text){toast("Type a comment first");return;}
+    const comments=(t.comments||[]).concat([{who:Cloud.me().email,text:text,at:nowISO()}]);
+    try{await patchTask(t.id,{comments:comments});closeModal();renderApp();toast("Comment added");}catch(e){toast(e.message);}
+  };
 }
 
 function bind(){
@@ -387,12 +443,7 @@ function bind(){
       ALL=ALL.filter(t=>t.id!==b.dataset.del);renderApp();toast("Deleted");}catch(e){toast(e.message);}
   });
   $$("#content [data-edit]").forEach(b=>b.onclick=()=>{const t=ALL.find(x=>x.id===b.dataset.edit);if(t)editMine(t);});
-  $$("#content [data-comment]").forEach(b=>b.onclick=async()=>{
-    const text=prompt("Comment:");if(!text)return;
-    const t=ALL.find(x=>x.id===b.dataset.comment);
-    const comments=(t.comments||[]).concat([{who:Cloud.me().email,text:text,at:nowISO()}]);
-    try{await patchTask(t.id,{comments:comments});renderApp();toast("Comment added");}catch(e){toast(e.message);}
-  });
+  $$("#content [data-comment]").forEach(b=>b.onclick=()=>{const t=ALL.find(x=>x.id===b.dataset.comment);if(t)openComment(t);});
   const qa=$("#qAdd"); if(qa){qa.onclick=addMine; $("#qTitle").addEventListener("keydown",e=>{if(e.key==="Enter")addMine();});}
   const td=$("#toggleDone"); if(td)td.onclick=()=>{SHOWDONE=!SHOWDONE;renderApp();};
   const cp=$("#calPrev"); if(cp)cp.onclick=()=>{CALM.m--;if(CALM.m<0){CALM.m=11;CALM.y--;}renderApp();};
@@ -432,6 +483,7 @@ function show(signedIn){
   $("#tabs").classList.toggle("hidden",!signedIn);
 }
 
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
 document.addEventListener("DOMContentLoaded",()=>{
   $("#aIn").onclick=async()=>{try{await Cloud.signIn($("#aEmail").value.trim(),$("#aPass").value);show(true);loadAll().catch(e=>toast(e.message));}catch(e){toast(e.message);}};
   $("#aUp").onclick=async()=>{try{const ok=await Cloud.signUp($("#aEmail").value.trim(),$("#aPass").value);if(ok){show(true);loadAll().catch(e=>toast(e.message));}else toast("Account created — check your email to confirm, then sign in");}catch(e){toast(e.message);}};
