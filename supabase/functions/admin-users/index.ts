@@ -101,6 +101,37 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    if (action === "archive" || action === "unarchive") {
+      if (!user_id) return json({ error: "User required" }, 400);
+      const r = await fetch(`${supaUrl}/rest/v1/profiles?id=eq.${user_id}`, {
+        method: "PATCH",
+        headers: { ...svcHeaders, Prefer: "return=minimal" },
+        body: JSON.stringify({ archived: action === "archive" }),
+      });
+      if (!r.ok) return json({ error: "Could not update the person (run migration 003 first?)" }, 400);
+      return json({ ok: true });
+    }
+
+    if (action === "delete") {
+      if (!user_id) return json({ error: "User required" }, 400);
+      if ((caller.id || "") === user_id) return json({ error: "You cannot delete your own account" }, 400);
+      // Remove dependent data first (tasks either side, money history), then the account.
+      await fetch(`${supaUrl}/rest/v1/transactions?or=(person_id.eq.${user_id},ledger_owner_id.eq.${user_id})`, {
+        method: "DELETE", headers: { ...svcHeaders, Prefer: "return=minimal" },
+      });
+      await fetch(`${supaUrl}/rest/v1/cloud_tasks?or=(owner_id.eq.${user_id},assignee_id.eq.${user_id})`, {
+        method: "DELETE", headers: { ...svcHeaders, Prefer: "return=minimal" },
+      });
+      const r = await fetch(`${supaUrl}/auth/v1/admin/users/${user_id}`, {
+        method: "DELETE", headers: svcHeaders,
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        return json({ error: d.msg || d.message || "Could not delete the user" }, 400);
+      }
+      return json({ ok: true });
+    }
+
     return json({ error: "Unknown action" }, 400);
   } catch (e) {
     return json({ error: String(e) }, 500);

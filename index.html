@@ -255,6 +255,8 @@ main#view{overflow-y:auto;padding:22px 26px 60px;background:var(--bg)}
   .btn.sm{padding:8px 11px}
   .trow{padding-top:9px;padding-bottom:9px}
 }
+.micbtn.rec{border-color:var(--danger);color:var(--danger);animation:micpulse 1.2s infinite}
+@keyframes micpulse{0%,100%{box-shadow:0 0 0 0 rgba(224,93,93,.35)}50%{box-shadow:0 0 0 6px rgba(224,93,93,0)}}
 /* calendar event dots (mobile) */
 .calcell .evtdots{display:none;gap:3px;flex-wrap:wrap;margin-top:3px}
 .calcell .evtdots i{width:7px;height:7px;border-radius:50%;background:var(--accent);display:block}
@@ -1007,7 +1009,10 @@ UI.inbox = function(){
   <div class="viewhead"><div><h1>Inbox</h1><div class="sub">Capture everything. Decide later.</div></div>
     <div class="viewactions">${CloudService.signedIn()?`<button class="btn" id="smartBtn">✨ Smart capture</button>`:""}${items.length?`<button class="btn primary" data-go="clarify">Clarify ${items.length} item${items.length===1?"":"s"} →</button>`:""}</div></div>
   <div class="card" style="margin-bottom:14px">
-    <input id="quickCapture" placeholder="What has your attention?  (Enter to capture — paste several lines to capture them all)" autocomplete="off" style="font-size:15px;padding:12px 14px">
+    <div style="display:flex;gap:8px;align-items:stretch">
+      <input id="quickCapture" placeholder="What has your attention?  (Enter to capture — paste several lines to capture them all)" autocomplete="off" style="font-size:15px;padding:12px 14px;flex:1">
+      ${micBtnHTML("qcMic")}
+    </div>
     <div style="margin-top:8px" class="eyebrow">Shorthand: @Email #ISO high — original text is always kept</div>
   </div>
   ${items.length? `<div class="card">${listHTML(items,"" ,{extraMeta:""})}</div>`
@@ -1445,7 +1450,8 @@ function openSmartCapture(prefill){
   $("#modalHost").innerHTML=`<div class="overlay" id="ovSmart"><div class="modal" style="max-width:680px">
     <h2><span class="eyebrow">✨ Smart capture</span></h2>
     <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px">Paste an email, WhatsApp message or notes — or attach screenshots — and the tasks, dates and people will be extracted for your review.</p>
-    <div class="field"><label>Pasted text</label><textarea id="scText" rows="7" placeholder="Paste the email or message here…"></textarea></div>
+    <div class="field"><label>Pasted text</label><textarea id="scText" rows="7" placeholder="Paste the email or message here — or use the mic and just say it…"></textarea></div>
+    <div style="margin:-4px 0 8px">${micBtnHTML("scMic")}</div>
     <div class="field"><label>Screenshots (up to 4)</label><input id="scImgs" type="file" accept="image/*" multiple></div>
     <div id="scStatus" class="mono" style="font-size:11.5px;color:var(--muted);min-height:16px"></div>
     <div id="scResults"></div>
@@ -1456,6 +1462,7 @@ function openSmartCapture(prefill){
   </div></div>`;
   $("#scCancel").onclick=closeModal;
   $("#ovSmart").addEventListener("click",e=>{ if(e.target.id==="ovSmart") closeModal(); });
+  const sm=$("#scMic"); if(sm) sm.onclick=()=>voiceToggle(sm,$("#scText"));
   if(prefill&&prefill.trim()){ $("#scText").value=prefill; setTimeout(()=>$("#scGo").click(),50); }
   $("#scGo").onclick=async()=>{
     const text=$("#scText").value.trim();
@@ -1519,6 +1526,28 @@ function renderSmartResults(out){
     toast(n?n+" task"+(n===1?"":"s")+" added":"Nothing selected",n?"ok":"warn");
   };
 }
+let ACTIVE_REC=null;
+function voiceToggle(btn,target){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ toast("Voice capture isn't supported in this browser — use Chrome","warn"); return; }
+  if(ACTIVE_REC){ try{ACTIVE_REC.stop();}catch(e){} return; }
+  const r=new SR(); ACTIVE_REC=r;
+  r.lang="en-GB"; r.continuous=true; r.interimResults=true;
+  const base=target.value?(target.value.replace(/\s+$/,"")+" "):"";
+  r.onresult=(e)=>{
+    let fin="",inter="";
+    for(let i=0;i<e.results.length;i++){
+      const t=e.results[i][0].transcript;
+      if(e.results[i].isFinal) fin+=t+" "; else inter+=t;
+    }
+    target.value=(base+fin+inter).replace(/\s+/g," ");
+  };
+  const done=()=>{ ACTIVE_REC=null; btn.classList.remove("rec"); };
+  r.onend=done; r.onerror=(e)=>{ done(); if(e.error==="not-allowed") toast("Microphone permission was blocked","warn"); };
+  btn.classList.add("rec"); toast("Listening… tap the mic again to stop","ok");
+  try{ r.start(); }catch(e){ done(); }
+}
+function micBtnHTML(id){ return `<button class="btn micbtn" id="${id}" type="button" title="Speak instead of typing" aria-label="Voice capture">🎤</button>`; }
 function cloudCardHTML(){
   const s=CloudService.signedIn();
   return `<div class="card"><h2><span class="eyebrow">Cloud &amp; delegation</span></h2>
@@ -1547,7 +1576,7 @@ async function openLedgerModal(){
     const [rows,people]=await Promise.all([CloudService.ledger(),CloudService.people()]);
     const bal=CloudService.balances(rows);
     const fmt=(n)=>{const v=Math.round(n*100)/100; return (v<0?"−":"")+Math.abs(v).toFixed(2);};
-    const others=people.filter(p=>p.id!==CloudService.me().id);
+    const others=people.filter(p=>p.id!==CloudService.me().id&&!p.archived);
     $("#modalHost").innerHTML=`<div class="overlay" id="ovLedger"><div class="modal" style="max-width:640px">
       <h2><span class="eyebrow">Money ledger</span></h2>
       ${Object.keys(bal).length?`<table class="plain" style="margin-bottom:12px"><thead><tr><th>Person</th><th style="text-align:right">Balance</th></tr></thead><tbody>
@@ -1582,7 +1611,7 @@ async function openLedgerModal(){
 function openDelegateModal(taskId){
   const t=TaskService.get(taskId); if(!t) return;
   CloudService.people().then(people=>{
-    const others=people.filter(p=>p.id!==CloudService.me().id);
+    const others=people.filter(p=>p.id!==CloudService.me().id&&!p.archived);
     if(!others.length){ toast("No other people have accounts yet","warn"); return; }
     $("#modalHost").innerHTML=`<div class="overlay" id="ovDel"><div class="modal" style="max-width:480px">
       <h2><span class="eyebrow">Delegate task</span></h2>
@@ -1694,13 +1723,16 @@ async function fillPeople(){
       CloudService.api(`cloud_tasks?owner_id=eq.${me}&select=id,title,status,due_date,assignee_id,comments,created_at&order=created_at.desc`)
     ]);
     if(!$("#pplBody")) return;
-    const others=people.filter(p=>p.id!==me);
-    if(!others.length){ body.innerHTML=`<div class="card"><p style="color:var(--muted);font-size:13px">No other people have accounts yet. Once someone creates an account in the Tasks app, they'll appear here.</p></div>`; return; }
-    if(AppState.peopleSel!=="overview"&&(!AppState.peopleSel||!others.some(p=>p.id===AppState.peopleSel))) AppState.peopleSel="overview";
+    const othersAll=people.filter(p=>p.id!==me);
+    const others=othersAll.filter(p=>!p.archived);
+    const archived=othersAll.filter(p=>p.archived);
+    if(!othersAll.length){ body.innerHTML=`<div class="card"><p style="color:var(--muted);font-size:13px">No other people have accounts yet. Use + Add person to create their account.</p></div>`; return; }
+    if(AppState.peopleSel!=="overview"&&(!AppState.peopleSel||!othersAll.some(p=>p.id===AppState.peopleSel))) AppState.peopleSel="overview";
     const fmt=n=>{const v=Math.round(n*100)/100; return (v<0?"−":"")+Math.abs(v).toFixed(2);};
     const chips=`<div class="filterbar" style="margin-bottom:14px">
       <button class="btn sm ${AppState.peopleSel==="overview"?"primary":""}" data-ppl="overview">Overview</button>
-      ${others.map(p=>`<button class="btn sm ${p.id===AppState.peopleSel?"primary":""}" data-ppl="${esc(p.id)}">${esc(p.display_name||p.email)}</button>`).join("")}</div>`;
+      ${others.map(p=>`<button class="btn sm ${p.id===AppState.peopleSel?"primary":""}" data-ppl="${esc(p.id)}">${esc(p.display_name||p.email)}</button>`).join("")}
+      ${archived.map(p=>`<button class="btn sm ghost ${p.id===AppState.peopleSel?"primary":""}" data-ppl="${esc(p.id)}" style="opacity:.6">${esc(p.display_name||p.email)} · archived</button>`).join("")}</div>`;
 
     if(AppState.peopleSel==="overview"){
       // ---- OVERVIEW DASHBOARD ----
@@ -1714,7 +1746,8 @@ async function fillPeople(){
       const perPerson={};
       ledger.forEach(r=>{const k=r.person_id; perPerson[k]=perPerson[k]||{}; const c=r.currency||"USD";
         perPerson[k][c]=(perPerson[k][c]||0)+(r.type==="float"?1:-1)*parseFloat(r.amount);});
-      const balLines=Object.keys(perPerson).map(pid=>{
+      const hiddenIds=new Set(archived.map(p=>p.id));
+      const balLines=Object.keys(perPerson).filter(pid=>!hiddenIds.has(pid)).map(pid=>{
         const cur=perPerson[pid];
         return `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)">
           <span style="font-size:13px;cursor:pointer;color:var(--accent)" data-ppl="${esc(pid)}">${esc(pName(pid))}</span>
@@ -1725,7 +1758,7 @@ async function fillPeople(){
       const tot={};
       ledger.forEach(r=>{const c=r.currency||"USD"; tot[c]=(tot[c]||0)+(r.type==="float"?1:-1)*parseFloat(r.amount);});
       const openByPerson={};
-      openCloudAll.forEach(t=>{openByPerson[t.assignee_id]=(openByPerson[t.assignee_id]||0)+1;});
+      openCloudAll.forEach(t=>{ if(!hiddenIds.has(t.assignee_id)) openByPerson[t.assignee_id]=(openByPerson[t.assignee_id]||0)+1; });
       body.innerHTML=chips+`
       <div class="grid c3" style="margin-bottom:14px">
         <div class="card"><div class="eyebrow">Floats out</div>
@@ -1763,7 +1796,7 @@ async function fillPeople(){
       const pf=$("#pplFloat"); if(pf) pf.onclick=openLedgerModal;
       return;
     }
-    const sel=others.find(p=>p.id===AppState.peopleSel);
+    const sel=othersAll.find(p=>p.id===AppState.peopleSel);
 
     // money for selected person
     const rows=ledger.filter(r=>r.person_id===sel.id);
@@ -1789,7 +1822,7 @@ async function fillPeople(){
             <div class="mono" style="font-size:11px;color:var(--faint);margin-top:4px">Given ${esc(c)} ${fmt(floats[c]||0)} · spent ${esc(c)} ${fmt(spends[c]||0)}</div>
           </div>`;}).join("")
         :`<p style="color:var(--muted);font-size:12.5px">No money entries with this person yet.</p>`}
-        <div class="modalfoot" style="justify-content:flex-start"><button class="btn primary" id="pplFloat">Give float</button><button class="btn" id="pplLedger">Full ledger</button><button class="btn ghost" id="pplReset">Reset password</button></div>
+        <div class="modalfoot" style="justify-content:flex-start"><button class="btn primary" id="pplFloat">Give float</button><button class="btn" id="pplLedger">Full ledger</button><button class="btn ghost" id="pplReset">Reset password</button>${sel.archived?`<button class="btn" id="pplUnarch">Unarchive</button>`:`<button class="btn ghost" id="pplArch">Archive</button>`}<button class="btn ghost danger" id="pplDelete" style="border-color:var(--danger);color:var(--danger)">Delete…</button></div>
         ${rows.length?`<div class="grouphead" style="margin-top:12px"><span class="eyebrow">Recent entries</span></div>
         ${rows.slice(0,8).map(r=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px">
           <span>${r.type==="float"?"Float":"Spend"}${r.description?" — "+esc(r.description):""}${r.receipt_path?` <a href="#" data-receipt="${esc(r.receipt_path)}" style="color:var(--accent)">receipt</a>`:""}</span>
@@ -1820,6 +1853,31 @@ async function fillPeople(){
     const pf=$("#pplFloat"); if(pf) pf.onclick=openLedgerModal;
     const pl=$("#pplLedger"); if(pl) pl.onclick=openLedgerModal;
     const rs=$("#pplReset"); if(rs) rs.onclick=()=>openResetPassword(sel);
+    const ar=$("#pplArch"); if(ar) ar.onclick=async()=>{
+      try{ await adminCall({action:"archive",user_id:sel.id}); toast((sel.display_name||sel.email)+" archived — history kept, hidden from lists","ok"); AppState.peopleSel="overview"; fillPeople(); }
+      catch(err){ toast(err.message,"warn"); }
+    };
+    const ua=$("#pplUnarch"); if(ua) ua.onclick=async()=>{
+      try{ await adminCall({action:"unarchive",user_id:sel.id}); toast("Unarchived","ok"); fillPeople(); }
+      catch(err){ toast(err.message,"warn"); }
+    };
+    const dl=$("#pplDelete"); if(dl) dl.onclick=()=>{
+      const name=sel.display_name||sel.email;
+      $("#modalHost").innerHTML=`<div class="overlay" id="ovDelU"><div class="modal" style="max-width:460px">
+        <h2><span class="eyebrow" style="color:var(--danger)">Delete ${esc(name)}</span></h2>
+        <p style="font-size:13px;color:var(--muted);margin:8px 0">This permanently removes their account, <b>all tasks either way between you</b>, and <b>their entire money history including receipts links</b>. If you only want them out of the way, use Archive instead — it keeps everything.</p>
+        <div class="field"><label>Type DELETE to confirm</label><input id="delConfirm" autocomplete="off"></div>
+        <div class="modalfoot"><button class="btn" id="delCancel">Cancel</button><button class="btn" id="delGo" style="border-color:var(--danger);color:var(--danger)">Delete permanently</button></div>
+      </div></div>`;
+      $("#delCancel").onclick=closeModal;
+      $("#ovDelU").addEventListener("click",e=>{ if(e.target.id==="ovDelU") closeModal(); });
+      $("#delGo").onclick=async()=>{
+        if($("#delConfirm").value.trim()!=="DELETE"){ toast("Type DELETE to confirm","warn"); return; }
+        $("#delGo").disabled=true;
+        try{ await adminCall({action:"delete",user_id:sel.id}); closeModal(); toast(name+" deleted","ok"); AppState.peopleSel="overview"; fillPeople(); }
+        catch(err){ toast(err.message,"warn"); $("#delGo").disabled=false; }
+      };
+    };
   }catch(err){ if($("#pplBody")) $("#pplBody").innerHTML=`<div class="card"><p style="color:var(--danger);font-size:12.5px">${esc(err.message)}</p></div>`; }
 }
 UI.settings = function(){
@@ -2030,7 +2088,7 @@ UI.captureModal = function(preset){
     <h2>Capture</h2>
     <textarea id="cmText" placeholder="What has your attention? One item per line.&#10;Shorthand: Email Mark about ISO SOW @Email #ISO high" style="min-height:110px;font-size:14.5px" autofocus></textarea>
     <div class="modalfoot"><span class="eyebrow" style="margin-right:auto;align-self:center">Ctrl+Enter to capture</span>
-      <button class="btn" data-close="1">Cancel</button>${CloudService.signedIn()?`<button class="btn" id="cmSmart" title="Extract tasks, dates and people with AI first">✨ Analyse</button>`:""}<button class="btn primary" id="cmGo">Capture</button></div>
+      ${micBtnHTML("cmMic")}<button class="btn" data-close="1">Cancel</button>${CloudService.signedIn()?`<button class="btn" id="cmSmart" title="Extract tasks, dates and people with AI first">✨ Analyse</button>`:""}<button class="btn primary" id="cmGo">Capture</button></div>
   </div></div>`;
   const doIt=()=>{
     const v=$("#cmText").value; if(!v.trim()){closeModal(); return;}
@@ -2040,6 +2098,7 @@ UI.captureModal = function(preset){
     toast(created.length+" item"+(created.length===1?"":"s")+" captured","ok");
   };
   $("#cmGo").onclick=doIt;
+  const cm=$("#cmMic"); if(cm) cm.onclick=()=>voiceToggle(cm,$("#cmText"));
   const cs=$("#cmSmart"); if(cs) cs.onclick=()=>{ const v=$("#cmText").value; closeModal(); openSmartCapture(v); };
   $("#cmText").addEventListener("keydown",e=>{ if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)) doIt(); });
   $("#cmText").focus();
@@ -2177,6 +2236,7 @@ function bindView(){
   if(v==="focus") fillFocusMoney();
   if(v==="people"){ fillPeople(); const pr=$("#pplRefresh"); if(pr) pr.onclick=fillPeople; const pa=$("#pplAddBtn"); if(pa) pa.onclick=openAddPerson; }
   const sb=$("#smartBtn"); if(sb) sb.onclick=()=>openSmartCapture();
+  const qm=$("#qcMic"); if(qm) qm.onclick=()=>voiceToggle(qm,$("#quickCapture"));
   const fc=$("#focusCapture"); if(fc) fc.onclick=()=>UI.captureModal();
   // shared: open task drawer / project card
   $$("#view [data-task]").forEach(el=>el.addEventListener("click",e=>{

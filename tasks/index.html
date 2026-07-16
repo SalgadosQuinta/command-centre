@@ -406,7 +406,7 @@ function moneyHTML(){
 
 function spendOwnerOptions(){
   const me=Cloud.me().id;
-  const others=PROFILES.filter(p=>p.id!==me);
+  const others=PROFILES.filter(p=>p.id!==me&&!p.archived);
   const lastFloat=TX.find(r=>r.type==="float");
   const def=lastFloat?lastFloat.ledger_owner_id:(inboxTasks()[0]?inboxTasks()[0].owner_id:(others[0]&&others[0].id));
   return others.map(p=>`<option value="${p.id}" ${p.id===def?"selected":""}>${esc(p.display_name||p.email)}</option>`).join("");
