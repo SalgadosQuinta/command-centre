@@ -320,7 +320,8 @@ function taskHTML(t,mine){
     ${comments.map(c=>`<div class="comment"><div class="who">${esc(c.who)} · ${esc(fmtD(c.at))}</div>${esc(c.text)}</div>`).join("")}
     <div class="row" style="margin-top:7px">
     ${isClosed(t)
-      ?(mine?`<button class="btn sm ghost" data-reopen="${esc(t.id)}">Reopen</button> <button class="btn sm ghost danger" data-del="${esc(t.id)}">Delete</button>`:"")
+      ?(mine?`<button class="btn sm ghost" data-reopen="${esc(t.id)}">Reopen</button> <button class="btn sm ghost danger" data-del="${esc(t.id)}">Delete</button>`
+             :`<button class="btn sm ghost" data-reopen="${esc(t.id)}">Not done — reopen</button>`)
       :mine
         ?`<button class="btn sm primary" data-act="done" data-id="${esc(t.id)}">Done</button>
           <button class="btn sm" data-edit="${esc(t.id)}">Edit</button>
@@ -476,7 +477,11 @@ function bind(){
     const body={status:b.dataset.act}; if(b.dataset.act==="done")body.completed_at=nowISO();
     try{await patchTask(b.dataset.id,body);renderApp();toast(b.dataset.act==="done"?"Marked done":"Updated");}catch(e){toast(e.message);}
   });
-  $$("#content [data-reopen]").forEach(b=>b.onclick=async()=>{try{await patchTask(b.dataset.reopen,{status:"open",completed_at:null});renderApp();}catch(e){toast(e.message);}});
+  $$("#content [data-reopen]").forEach(b=>b.onclick=async()=>{
+    const t=ALL.find(x=>x.id===b.dataset.reopen); if(!t) return;
+    const mine=t.owner_id===Cloud.me().id&&t.assignee_id===Cloud.me().id;
+    try{await patchTask(t.id,{status:mine?"open":"in_progress",completed_at:null});renderApp();toast("Reopened");}catch(e){toast(e.message);}
+  });
   $$("#content [data-del]").forEach(b=>b.onclick=async()=>{
     if(!confirm("Delete this task permanently?"))return;
     try{await Cloud.api(`cloud_tasks?id=eq.${b.dataset.del}`,{method:"DELETE",prefer:"return=minimal"});
