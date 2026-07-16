@@ -1353,7 +1353,9 @@ const CloudService = {
     });
     if(r.status===401&&!retried&&await this.refresh()) return this.api(path,opts,true);
     if(!r.ok){ const t=await r.text(); throw new Error("Cloud error: "+t.slice(0,180)); }
-    return r.status===204?null:r.json();
+    const bodyText=await r.text();
+    if(!bodyText||!bodyText.trim()) return null;
+    try{ return JSON.parse(bodyText); }catch(e){ return null; }
   },
   async people(){ return this.api("profiles?select=id,email,display_name&order=display_name"); },
   async delegate(task,assigneeId,note,due){

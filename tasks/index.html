@@ -182,7 +182,9 @@ const Cloud={
       body:opts.body?JSON.stringify(opts.body):undefined});
     if(r.status===401&&!retried&&await this.refresh())return this.api(path,opts,true);
     if(!r.ok){throw new Error("Error: "+(await r.text()).slice(0,160));}
-    return r.status===204?null:r.json();
+    const bodyText=await r.text();
+    if(!bodyText||!bodyText.trim())return null;
+    try{return JSON.parse(bodyText);}catch(e){return null;}
   },
   async upload(path,file){
     const r=await fetch(`${CLOUD.url}/storage/v1/object/receipts/${path}`,{method:"POST",headers:{apikey:CLOUD.key,Authorization:"Bearer "+this.session.access_token,"Content-Type":file.type||"application/octet-stream"},body:file});
