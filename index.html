@@ -1633,9 +1633,74 @@ async function fillPeople(){
     if(!$("#pplBody")) return;
     const others=people.filter(p=>p.id!==me);
     if(!others.length){ body.innerHTML=`<div class="card"><p style="color:var(--muted);font-size:13px">No other people have accounts yet. Once someone creates an account in the Tasks app, they'll appear here.</p></div>`; return; }
-    if(!AppState.peopleSel||!others.some(p=>p.id===AppState.peopleSel)) AppState.peopleSel=others[0].id;
-    const sel=others.find(p=>p.id===AppState.peopleSel);
+    if(AppState.peopleSel!=="overview"&&(!AppState.peopleSel||!others.some(p=>p.id===AppState.peopleSel))) AppState.peopleSel="overview";
     const fmt=n=>{const v=Math.round(n*100)/100; return (v<0?"−":"")+Math.abs(v).toFixed(2);};
+    const chips=`<div class="filterbar" style="margin-bottom:14px">
+      <button class="btn sm ${AppState.peopleSel==="overview"?"primary":""}" data-ppl="overview">Overview</button>
+      ${others.map(p=>`<button class="btn sm ${p.id===AppState.peopleSel?"primary":""}" data-ppl="${esc(p.id)}">${esc(p.display_name||p.email)}</button>`).join("")}</div>`;
+
+    if(AppState.peopleSel==="overview"){
+      // ---- OVERVIEW DASHBOARD ----
+      const openCloudAll=cloudTasks.filter(t=>!["done","declined"].includes(t.status));
+      const doneRecent=cloudTasks.filter(t=>t.status==="done").slice(0,5);
+      const waitingAll=TaskService.byStatus("waiting");
+      const tStr=todayStr();
+      const overdueCloud=openCloudAll.filter(t=>t.due_date&&t.due_date<tStr);
+      const pName=id=>{const p=people.find(x=>x.id===id); return p?(p.display_name||p.email):"?";};
+      // balances per person
+      const perPerson={};
+      ledger.forEach(r=>{const k=r.person_id; perPerson[k]=perPerson[k]||{}; const c=r.currency||"USD";
+        perPerson[k][c]=(perPerson[k][c]||0)+(r.type==="float"?1:-1)*parseFloat(r.amount);});
+      const balLines=Object.keys(perPerson).map(pid=>{
+        const cur=perPerson[pid];
+        return `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)">
+          <span style="font-size:13px;cursor:pointer;color:var(--accent)" data-ppl="${esc(pid)}">${esc(pName(pid))}</span>
+          <span class="mono" style="font-size:12px;text-align:right">${Object.keys(cur).map(c=>{const v=cur[c];
+            return `<span style="color:${v<0?"var(--danger)":"var(--muted)"}">${esc(c)} ${fmt(v)}${v<0?" owed":""}</span>`;}).join("<br>")}</span></div>`;
+      }).join("");
+      // totals per currency
+      const tot={};
+      ledger.forEach(r=>{const c=r.currency||"USD"; tot[c]=(tot[c]||0)+(r.type==="float"?1:-1)*parseFloat(r.amount);});
+      const openByPerson={};
+      openCloudAll.forEach(t=>{openByPerson[t.assignee_id]=(openByPerson[t.assignee_id]||0)+1;});
+      body.innerHTML=chips+`
+      <div class="grid c3" style="margin-bottom:14px">
+        <div class="card"><div class="eyebrow">Floats out</div>
+          ${Object.keys(tot).length?Object.keys(tot).map(c=>`<div style="font-size:22px;font-weight:650;font-family:var(--mono);color:${tot[c]<0?"var(--danger)":"var(--text)"}">${esc(c)} ${fmt(tot[c])}</div>`).join(""):`<div style="font-size:22px;font-weight:650;font-family:var(--mono)">—</div>`}
+          <div class="sub">net position across everyone</div></div>
+        <div class="card"><div class="eyebrow">Open delegated tasks</div>
+          <div style="font-size:22px;font-weight:650;font-family:var(--mono);color:${overdueCloud.length?"var(--danger)":"var(--text)"}">${openCloudAll.length}</div>
+          <div class="sub">${overdueCloud.length?overdueCloud.length+" overdue":"none overdue"}</div></div>
+        <div class="card"><div class="eyebrow">Waiting for</div>
+          <div style="font-size:22px;font-weight:650;font-family:var(--mono)">${waitingAll.length}</div>
+          <div class="sub">items in your Waiting for list</div></div>
+      </div>
+      <div class="grid c2">
+        <div class="card">
+          <h2 style="display:flex;justify-content:space-between;align-items:center"><span class="eyebrow">Money by person</span><button class="btn sm" id="pplFloat">Give float</button></h2>
+          ${balLines||`<p style="color:var(--muted);font-size:12.5px">No money entries yet.</p>`}
+          <div class="grouphead" style="margin-top:12px"><span class="eyebrow">Recent transactions</span></div>
+          ${ledger.slice(0,8).map(r=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px">
+            <span>${esc(pName(r.person_id))} — ${r.type==="float"?"float":"spend"}${r.description?" · "+esc(r.description):""}${r.receipt_path?` <a href="#" data-receipt="${esc(r.receipt_path)}" style="color:var(--accent)">receipt</a>`:""}</span>
+            <span class="mono" style="font-size:11.5px;white-space:nowrap;color:${r.type==="spend"?"var(--danger)":"var(--muted)"}">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</span></div>`).join("")||`<p style="color:var(--muted);font-size:12.5px">Nothing yet.</p>`}
+        </div>
+        <div class="card">
+          <h2><span class="eyebrow">Outstanding tasks by person</span></h2>
+          ${Object.keys(openByPerson).length?Object.keys(openByPerson).map(pid=>`
+            <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+              <div style="display:flex;justify-content:space-between"><span style="font-size:13px;cursor:pointer;color:var(--accent)" data-ppl="${esc(pid)}">${esc(pName(pid))}</span><span class="badge">${openByPerson[pid]}</span></div>
+              ${openCloudAll.filter(t=>t.assignee_id===pid).slice(0,3).map(t=>`<div class="mono" style="font-size:11px;color:${t.due_date&&t.due_date<tStr?"var(--danger)":"var(--faint)"};margin-top:3px">· ${esc(t.title)} — ${esc(t.status.replace("_"," "))}${t.due_date?" · due "+esc(fmtDate(t.due_date)):""}</div>`).join("")}
+            </div>`).join(""):`<p style="color:var(--muted);font-size:12.5px">Nothing delegated at the moment.</p>`}
+          ${doneRecent.length?`<div class="grouphead"><span class="eyebrow">Recently completed</span></div>
+            <div style="opacity:.7">${doneRecent.map(t=>`<div style="padding:5px 0;font-size:12px;color:var(--faint)">✓ ${esc(t.title)} — ${esc(pName(t.assignee_id))}</div>`).join("")}</div>`:""}
+        </div>
+      </div>`;
+      $$("#pplBody [data-ppl]").forEach(b=>b.onclick=()=>{ AppState.peopleSel=b.dataset.ppl; fillPeople(); });
+      $$("#pplBody [data-receipt]").forEach(a=>a.onclick=async(e)=>{e.preventDefault(); try{ window.open(await CloudService.receiptUrl(a.dataset.receipt),"_blank"); }catch(err){ toast(err.message,"warn"); }});
+      const pf=$("#pplFloat"); if(pf) pf.onclick=openLedgerModal;
+      return;
+    }
+    const sel=others.find(p=>p.id===AppState.peopleSel);
 
     // money for selected person
     const rows=ledger.filter(r=>r.person_id===sel.id);
@@ -1650,8 +1715,7 @@ async function fillPeople(){
     const openCloud=theirCloud.filter(t=>!["done","declined"].includes(t.status));
     const doneCloud=theirCloud.filter(t=>["done","declined"].includes(t.status));
 
-    body.innerHTML=`
-    <div class="filterbar" style="margin-bottom:14px">${others.map(p=>`<button class="btn sm ${p.id===sel.id?"primary":""}" data-ppl="${esc(p.id)}">${esc(p.display_name||p.email)}</button>`).join("")}</div>
+    body.innerHTML=chips+`
     <div class="grid c2">
       <div class="card">
         <h2><span class="eyebrow">Money with ${esc(sel.display_name||sel.email)}</span></h2>
