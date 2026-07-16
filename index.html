@@ -310,22 +310,23 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
   <nav class="rail" aria-label="Main navigation">
     <button class="btn primary" id="captureBtn" style="margin:2px 6px 10px;justify-content:center">+ Capture <span class="kbd" style="border-color:rgba(0,0,0,.25);color:inherit">C</span></button>
     <div class="navsec eyebrow">Engage</div>
-    <button class="navbtn" data-view="focus"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>Focus</button>
-    <button class="navbtn" data-view="calendar"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</button>
+    <button class="navbtn" title="Start here: your best next actions, chosen for you" data-view="focus"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>Focus</button>
+    <button class="navbtn" title="Hard landscape — only date-fixed items live here" data-view="calendar"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</button>
     <div class="navsec eyebrow">Process</div>
-    <button class="navbtn" data-view="inbox"><svg viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l2 3h4l2-3h5"/></svg>Inbox<span class="cnt" id="cntInbox"></span></button>
-    <button class="navbtn" data-view="clarify"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 1 4 12.7V17H8v-2.3A7 7 0 0 1 12 2z"/></svg>Clarify<span class="cnt" id="cntClarify"></span></button>
+    <button class="navbtn" title="Capture everything that has your attention, decide later" data-view="inbox"><svg viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l2 3h4l2-3h5"/></svg>Inbox<span class="cnt" id="cntInbox"></span></button>
+    <button class="navbtn" title="Process the inbox one item at a time to zero" data-view="clarify"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 1 4 12.7V17H8v-2.3A7 7 0 0 1 12 2z"/></svg>Clarify<span class="cnt" id="cntClarify"></span></button>
     <div class="navsec eyebrow">Organise</div>
-    <button class="navbtn" data-view="next"><svg viewBox="0 0 24 24"><path d="M5 4l14 8-14 8z"/></svg>Next actions<span class="cnt" id="cntNext"></span></button>
-    <button class="navbtn" data-view="projects"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Projects<span class="cnt" id="cntProjects"></span></button>
-    <button class="navbtn" data-view="waiting"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Waiting for<span class="cnt" id="cntWaiting"></span></button>
-    <button class="navbtn" data-view="people"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5 5 0 0 1 6 4.5"/></svg>People</button>
-    <button class="navbtn" data-view="someday"><svg viewBox="0 0 24 24"><path d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/></svg>Someday / Maybe<span class="cnt" id="cntSomeday"></span></button>
-    <button class="navbtn" data-view="reference"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4H6.5A2.5 2.5 0 0 0 4 6.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>Reference</button>
+    <button class="navbtn" title="Concrete next actions, grouped by context" data-view="next"><svg viewBox="0 0 24 24"><path d="M5 4l14 8-14 8z"/></svg>Next actions<span class="cnt" id="cntNext"></span></button>
+    <button class="navbtn" title="Anything needing more than one action — each must have a next action" data-view="projects"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Projects<span class="cnt" id="cntProjects"></span></button>
+    <button class="navbtn" title="Everything delegated or owed to you, with follow-ups" data-view="waiting"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Waiting for<span class="cnt" id="cntWaiting"></span></button>
+    <button class="navbtn" title="Per-person view: their tasks and the money position" data-view="people"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5 5 0 0 1 6 4.5"/></svg>People</button>
+    <button class="navbtn" title="Ideas you are not committing to yet — reviewed weekly" data-view="someday"><svg viewBox="0 0 24 24"><path d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/></svg>Someday / Maybe<span class="cnt" id="cntSomeday"></span></button>
+    <button class="navbtn" title="Information you want to keep but never act on" data-view="reference"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4H6.5A2.5 2.5 0 0 0 4 6.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>Reference</button>
+    <button class="navbtn" title="Thinking space — meeting notes, ideas, anything that is not a task" data-view="notes"><svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>Notes</button>
     <div class="navsec eyebrow">Reflect</div>
-    <button class="navbtn" data-view="review"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>Review<span class="cnt" id="cntReview"></span></button>
+    <button class="navbtn" title="Daily scan and the 10-step weekly review" data-view="review"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>Review<span class="cnt" id="cntReview"></span></button>
     <div class="navsec eyebrow">System</div>
-    <button class="navbtn" data-view="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>Data &amp; settings</button>
+    <button class="navbtn" title="File connection, backups, cloud account and preferences" data-view="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>Data &amp; settings</button>
     <div class="railfoot"><span class="eyebrow"><span class="kbd">Ctrl+K</span> commands</span></div>
   </nav>
 
@@ -952,6 +953,32 @@ function listHTML(tasks, emptyMsg, opts){
 const UI = {};
 
 /* ---------------- FOCUS ---------------- */
+function coachTips(hh){
+  const tips=[];
+  if(hh.inbox>0) tips.push({t:"Clarify your inbox",d:hh.inbox+" item"+(hh.inbox===1?"":"s")+" waiting to be processed — decide the next physical action for each. Aim for inbox zero.",go:"clarify",btn:"Clarify now"});
+  if(hh.noNext>0) tips.push({t:"Give every project a next action",d:hh.noNext+" project"+(hh.noNext===1?"":"s")+" ha"+(hh.noNext===1?"s":"ve")+" no next action — they are stalled until you decide one small step.",go:"projects",btn:"Open projects"});
+  if(hh.overdue>0) tips.push({t:"Deal with overdue items",d:hh.overdue+" item"+(hh.overdue===1?" is":"s are")+" past due — do, reschedule honestly, or drop them. Overdue lists breed avoidance.",go:"next",btn:"See them"});
+  if(hh.waitFollow>0) tips.push({t:"Chase what you're owed",d:hh.waitFollow+" waiting item"+(hh.waitFollow===1?" needs":"s need")+" a follow-up — a quick nudge keeps other people moving.",go:"waiting",btn:"Open waiting"});
+  if(hh.sinceWeekly>7) tips.push({t:"Do a weekly review",d:(hh.sinceWeekly>500?"You've never done one":"It has been "+hh.sinceWeekly+" days")+" — the weekly review is what makes the whole system trustworthy.",go:"review",btn:"Start review"});
+  tips.push({t:"Capture by voice",d:"Tap the mic on any capture box and just say it — or use ✨ Smart capture to turn a whole email or voice note into tasks.",go:"inbox",btn:"Try capture"});
+  tips.push({t:"Work from contexts",d:"On Next actions, group by context and pick the list matching where you are — @Calls in the car, @Computer at your desk.",go:"next",btn:"Next actions"});
+  tips.push({t:"Keep notes out of your task list",d:"Meeting notes and thinking belong in Notes; only concrete next actions belong in your lists.",go:"notes",btn:"Open notes"});
+  return tips;
+}
+function coachHTML(hh){
+  if(localStorage.getItem("gtdcc-coach-hide")===todayStr()) return "";
+  const tips=coachTips(hh).slice(0,2);
+  return `<div class="card" style="margin-bottom:16px;border-left:3px solid var(--accent)">
+    <h2 style="display:flex;justify-content:space-between;align-items:center"><span class="eyebrow">Coach — two suggestions</span>
+    <button class="btn sm ghost" id="coachHide" title="Hide until tomorrow">Hide for today</button></h2>
+    <div class="grid c2" style="margin-top:4px">
+    ${tips.map(t=>`<div>
+      <b style="font-size:13px">${esc(t.t)}</b>
+      <div style="color:var(--muted);font-size:12.5px;margin:4px 0 8px">${esc(t.d)}</div>
+      <button class="btn sm" data-go="${esc(t.go)}">${esc(t.btn)}</button>
+    </div>`).join("")}
+    </div></div>`;
+}
 UI.focus = function(){
   const h=GTDService.health();
   const f=AppState.filters;
@@ -965,6 +992,7 @@ UI.focus = function(){
     <span class="stateword">${h.word.toUpperCase()}</span>
     <span style="color:var(--muted);font-size:12.5px">${h.inbox} in inbox · ${h.overdue} overdue · ${h.noNext} project${h.noNext===1?"":"s"} without a next action · last weekly review ${h.sinceWeekly>500?"never":h.sinceWeekly+" day"+(h.sinceWeekly===1?"":"s")+" ago"}</span>
   </div>
+  ${coachHTML(h)}
   ${CloudService.signedIn()?`<div id="focusMoney"></div>`:""}
 
   <div class="card" style="margin-bottom:14px">
@@ -1940,6 +1968,53 @@ function healthTableHTML(){
   </tbody></table>`;
 }
 
+/* ---------------- NOTES ---------------- */
+const NoteService = {
+  all(){ return (AppState.data.notes=AppState.data.notes||[]); },
+  get(id){ return this.all().find(n=>n.id===id); },
+  create(){ const n={id:uid("note"),title:"",body:"",pinned:false,createdAt:nowISO(),updatedAt:nowISO()}; this.all().unshift(n); markDirty(); return n; },
+  update(id,patch){ const n=this.get(id); if(!n) return; Object.assign(n,patch,{updatedAt:nowISO()}); markDirty(); },
+  remove(id){ const a=this.all(); const i=a.findIndex(n=>n.id===id); if(i>=0){ a.splice(i,1); markDirty(); } }
+};
+UI.notes = function(){
+  const notes=NoteService.all().slice().sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)||b.updatedAt.localeCompare(a.updatedAt));
+  return `
+  <div class="viewhead"><div><h1>Notes</h1><div class="sub">Thinking space — separate from your task list</div></div>
+    <div class="viewactions"><button class="btn primary" id="newNoteBtn">+ New note</button></div></div>
+  ${notes.length?`<div class="grid c3">${notes.map(n=>`
+    <div class="card" data-note="${esc(n.id)}" style="cursor:pointer;${n.pinned?"border-color:var(--accent)":""}">
+      <div style="display:flex;justify-content:space-between;gap:8px">
+        <b style="font-size:13.5px">${esc(n.title||"Untitled")}</b>
+        ${n.pinned?`<span class="eyebrow">Pinned</span>`:""}
+      </div>
+      <div style="color:var(--muted);font-size:12.5px;margin-top:5px;max-height:70px;overflow:hidden;white-space:pre-wrap">${esc((n.body||"").slice(0,180))}${(n.body||"").length>180?"…":""}</div>
+      <div class="mono" style="font-size:10px;color:var(--faint);margin-top:8px">${esc(fmtDate(n.updatedAt.slice(0,10)))}</div>
+    </div>`).join("")}</div>`
+  :`<div class="card"><div class="empty"><div class="big">No notes yet</div>Capture thinking, meeting notes, ideas — anything that isn't a task.</div></div>`}`;
+};
+function openNoteEditor(id){
+  const n=NoteService.get(id); if(!n) return;
+  $("#modalHost").innerHTML=`<div class="overlay" id="ovNote"><div class="modal" style="max-width:640px">
+    <div class="field"><label>Title</label><input id="ntTitle" value="${esc(n.title)}" placeholder="Untitled"></div>
+    <div class="field"><label>Note</label><textarea id="ntBody" rows="12" style="font-size:14px">${esc(n.body)}</textarea></div>
+    <div class="modalfoot" style="justify-content:flex-start;flex-wrap:wrap">
+      ${micBtnHTML("ntMic")}
+      <button class="btn" id="ntPin">${n.pinned?"Unpin":"Pin"}</button>
+      <button class="btn ghost" id="ntDelete" style="border-color:var(--danger);color:var(--danger)">Delete</button>
+      <span style="flex:1"></span>
+      <button class="btn" id="ntClose">Close</button>
+      <button class="btn primary" id="ntSave">Save</button>
+    </div>
+  </div></div>`;
+  const save=()=>NoteService.update(id,{title:$("#ntTitle").value.trim(),body:$("#ntBody").value});
+  $("#ntSave").onclick=()=>{ save(); closeModal(); render(); toast("Note saved","ok"); };
+  $("#ntClose").onclick=()=>{ save(); closeModal(); render(); };
+  $("#ovNote").addEventListener("click",e=>{ if(e.target.id==="ovNote"){ save(); closeModal(); render(); } });
+  $("#ntPin").onclick=()=>{ save(); NoteService.update(id,{pinned:!NoteService.get(id).pinned}); openNoteEditor(id); };
+  $("#ntDelete").onclick=()=>{ if(confirm("Delete this note?")){ NoteService.remove(id); closeModal(); render(); toast("Note deleted","ok"); } };
+  const nm=$("#ntMic"); if(nm) nm.onclick=()=>voiceToggle(nm,$("#ntBody"));
+  $("#ntTitle").focus();
+}
 /* ---------------- SEARCH ---------------- */
 UI.search = function(){
   const {tasks,projects}=SearchService.run(AppState.searchQuery);
@@ -1947,7 +2022,9 @@ UI.search = function(){
   <div class="viewhead"><div><h1>Search</h1><div class="sub">“${esc(AppState.searchQuery)}” — ${tasks.length} task${tasks.length===1?"":"s"}, ${projects.length} project${projects.length===1?"":"s"}</div></div></div>
   ${projects.length?`<div class="grouphead"><span class="eyebrow">Projects</span></div><div class="grid c2">${projects.map(p=>`<div class="projcard" data-project="${esc(p.id)}"><b>${esc(p.name)}</b><div style="color:var(--muted);font-size:12.5px">${esc(p.desiredOutcome||"")}</div></div>`).join("")}</div>`:""}
   <div class="grouphead"><span class="eyebrow">Tasks</span></div>
-  <div class="card" style="padding:6px 10px">${listHTML(tasks,"No matching tasks.",{extraMeta:""})}</div>`;
+  <div class="card" style="padding:6px 10px">${listHTML(tasks,"No matching tasks.",{extraMeta:""})}</div>
+  ${(()=>{const q=AppState.searchQuery.toLowerCase();const ns=(AppState.data.notes||[]).filter(n=>(n.title||"").toLowerCase().includes(q)||(n.body||"").toLowerCase().includes(q));
+    return ns.length?`<div class="grouphead"><span class="eyebrow">Notes</span></div><div class="grid c3">${ns.map(n=>`<div class="card" data-note="${esc(n.id)}" style="cursor:pointer"><b style="font-size:13px">${esc(n.title||"Untitled")}</b><div style="color:var(--muted);font-size:12px;margin-top:4px">${esc((n.body||"").slice(0,120))}</div></div>`).join("")}</div>`:"";})()}`;
 };
 /* ============================================================
    MODALS & DRAWERS
@@ -2233,8 +2310,10 @@ function fillFocusMoney(){
 }
 function bindView(){
   const v=AppState.currentView;
-  if(v==="focus") fillFocusMoney();
+  if(v==="focus"){ fillFocusMoney(); const ch=$("#coachHide"); if(ch) ch.onclick=()=>{ localStorage.setItem("gtdcc-coach-hide",todayStr()); render(); }; }
   if(v==="people"){ fillPeople(); const pr=$("#pplRefresh"); if(pr) pr.onclick=fillPeople; const pa=$("#pplAddBtn"); if(pa) pa.onclick=openAddPerson; }
+  $$("#view [data-note]").forEach(el=>el.addEventListener("click",()=>openNoteEditor(el.dataset.note)));
+  const nn=$("#newNoteBtn"); if(nn) nn.onclick=()=>{ const n=NoteService.create(); openNoteEditor(n.id); };
   const sb=$("#smartBtn"); if(sb) sb.onclick=()=>openSmartCapture();
   const qm=$("#qcMic"); if(qm) qm.onclick=()=>voiceToggle(qm,$("#quickCapture"));
   const fc=$("#focusCapture"); if(fc) fc.onclick=()=>UI.captureModal();
@@ -2450,7 +2529,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $$("nav .navbtn,[id=mobilenav] .navbtn").forEach(b=>{ if(b.dataset.view) b.addEventListener("click",()=>go(b.dataset.view)); });
   const mm=$("#mobMore");
   if(mm) mm.addEventListener("click",()=>{
-    const views=[["clarify","Clarify"],["waiting","Waiting for"],["people","People"],["calendar","Calendar"],["someday","Someday / Maybe"],["reference","Reference"],["review","Review"],["settings","Data & settings"]];
+    const views=[["clarify","Clarify"],["waiting","Waiting for"],["people","People"],["notes","Notes"],["calendar","Calendar"],["someday","Someday / Maybe"],["reference","Reference"],["review","Review"],["settings","Data & settings"]];
     $("#modalHost").innerHTML=`<div class="overlay" id="ovMore"><div class="modal" style="max-width:420px">
       <h2><span class="eyebrow">All views</span></h2>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
