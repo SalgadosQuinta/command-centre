@@ -1490,7 +1490,6 @@ function openSmartCapture(prefill){
     </div>
   </div></div>`;
   $("#scCancel").onclick=closeModal;
-  $("#ovSmart").addEventListener("click",e=>{ if(e.target.id==="ovSmart") closeModal(); });
   const sm=$("#scMic"); if(sm) sm.onclick=()=>voiceToggle(sm,$("#scText"));
   if(prefill&&prefill.trim()){ $("#scText").value=prefill; setTimeout(()=>$("#scGo").click(),50); }
   $("#scGo").onclick=async()=>{
@@ -1627,7 +1626,6 @@ async function openLedgerModal(){
       <div class="modalfoot"><button class="btn" id="flClose">Close</button><button class="btn primary" id="flGive" ${others.length?"":"disabled"}>Record float</button></div>
     </div></div>`;
     $("#flClose").onclick=closeModal;
-    $("#ovLedger").addEventListener("click",e=>{ if(e.target.id==="ovLedger") closeModal(); });
     $$("#modalHost [data-receipt]").forEach(a=>a.onclick=async(e)=>{e.preventDefault(); try{ const u=await CloudService.receiptUrl(a.dataset.receipt); window.open(u,"_blank"); }catch(err){ toast(err.message,"warn"); }});
     $("#flGive").onclick=async()=>{
       const amt=parseFloat($("#flAmount").value);
@@ -1651,7 +1649,6 @@ function openDelegateModal(taskId){
       <div class="modalfoot"><button class="btn" id="dlCancel">Cancel</button><button class="btn primary" id="dlSend">Send task</button></div>
     </div></div>`;
     $("#dlCancel").onclick=closeModal;
-    $("#ovDel").addEventListener("click",e=>{ if(e.target.id==="ovDel") closeModal(); });
     $("#dlSend").onclick=async()=>{
       const sel=$("#dlPerson"); const email=sel.options[sel.selectedIndex].dataset.email;
       try{
@@ -1692,7 +1689,6 @@ function openAddPerson(){
   $("#apPass").value=genPassword();
   $("#apGen").onclick=()=>{ $("#apPass").value=genPassword(); };
   $("#apCancel").onclick=closeModal;
-  $("#ovAddP").addEventListener("click",e=>{ if(e.target.id==="ovAddP") closeModal(); });
   $("#apGo").onclick=async()=>{
     const email=$("#apEmail").value.trim(), pass=$("#apPass").value, name=$("#apName").value.trim();
     if(!email||!pass){ toast("Email and password are needed","warn"); return; }
@@ -1715,7 +1711,6 @@ function openResetPassword(person){
   $("#rpPass").value=genPassword();
   $("#rpGen").onclick=()=>{ $("#rpPass").value=genPassword(); };
   $("#rpCancel").onclick=closeModal;
-  $("#ovRst").addEventListener("click",e=>{ if(e.target.id==="ovRst") closeModal(); });
   $("#rpGo").onclick=async()=>{
     const pass=$("#rpPass").value;
     if(!pass){ toast("Enter a password","warn"); return; }
@@ -1899,7 +1894,6 @@ async function fillPeople(){
         <div class="modalfoot"><button class="btn" id="delCancel">Cancel</button><button class="btn" id="delGo" style="border-color:var(--danger);color:var(--danger)">Delete permanently</button></div>
       </div></div>`;
       $("#delCancel").onclick=closeModal;
-      $("#ovDelU").addEventListener("click",e=>{ if(e.target.id==="ovDelU") closeModal(); });
       $("#delGo").onclick=async()=>{
         if($("#delConfirm").value.trim()!=="DELETE"){ toast("Type DELETE to confirm","warn"); return; }
         $("#delGo").disabled=true;
@@ -2057,7 +2051,6 @@ function openPinSetup(){
     <div class="modalfoot"><button class="btn" id="pinCancel">Cancel</button><button class="btn primary" id="pinSave">Save</button></div>
   </div></div>`;
   $("#pinCancel").onclick=closeModal;
-  $("#ovPin").addEventListener("click",e=>{ if(e.target.id==="ovPin") closeModal(); });
   $("#pinSave").onclick=async()=>{
     if(has){
       const cur=await sha256($("#pinCur").value.trim());
@@ -2207,7 +2200,6 @@ function openIncomeEditor(id){
     <div class="modalfoot"><button class="btn" id="fiCancel">Cancel</button><button class="btn primary" id="fiSave">Save</button></div>
   </div></div>`;
   $("#fiCancel").onclick=closeModal;
-  $("#ovInc").addEventListener("click",e=>{ if(e.target.id==="ovInc") closeModal(); });
   $("#fiSave").onclick=()=>{
     const amt=parseFloat($("#fiAmount").value);
     if(!$("#fiName").value.trim()||!amt||amt<=0){ toast("Name and a valid amount are needed","warn"); return; }
@@ -2234,7 +2226,6 @@ function openOutgoingEditor(id){
     <div class="modalfoot"><button class="btn" id="foCancel">Cancel</button><button class="btn primary" id="foSave">Save</button></div>
   </div></div>`;
   $("#foCancel").onclick=closeModal;
-  $("#ovOut").addEventListener("click",e=>{ if(e.target.id==="ovOut") closeModal(); });
   $("#foSave").onclick=()=>{
     const amt=parseFloat($("#foAmount").value);
     if(!$("#foName").value.trim()||!amt||amt<=0){ toast("Name and a valid amount are needed","warn"); return; }
@@ -2284,7 +2275,6 @@ function openNoteEditor(id){
   const save=()=>NoteService.update(id,{title:$("#ntTitle").value.trim(),body:$("#ntBody").value});
   $("#ntSave").onclick=()=>{ save(); closeModal(); render(); toast("Note saved","ok"); };
   $("#ntClose").onclick=()=>{ save(); closeModal(); render(); };
-  $("#ovNote").addEventListener("click",e=>{ if(e.target.id==="ovNote"){ save(); closeModal(); render(); } });
   $("#ntPin").onclick=()=>{ save(); NoteService.update(id,{pinned:!NoteService.get(id).pinned}); openNoteEditor(id); };
   $("#ntDelete").onclick=()=>{ if(confirm("Delete this note?")){ NoteService.remove(id); closeModal(); render(); toast("Note deleted","ok"); } };
   const nm=$("#ntMic"); if(nm) nm.onclick=()=>voiceToggle(nm,$("#ntBody"));
@@ -2314,7 +2304,7 @@ UI.taskDrawer = function(id){
   const areaOpts=AppState.data.areas.map(a=>`<option value="${esc(a.id)}" ${t.areaId===a.id?"selected":""}>${esc(a.name)}</option>`).join("");
   const w=t.waitingFor||{};
   $("#modalHost").innerHTML=`
-  <div class="overlay" data-close="1">
+  <div class="overlay">
   <div class="drawer" role="dialog" aria-label="Task detail" style="left:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <span class="pill"><span class="dot" style="background:var(--accent)"></span>${esc(STATUS_LABEL[t.status]||t.status)}</span>
@@ -2400,7 +2390,7 @@ UI.projectModal = function(id){
   const p=id?ProjectService.get(id):null;
   const areaOpts=AppState.data.areas.map(a=>`<option value="${esc(a.id)}" ${p?.areaId===a.id?"selected":""}>${esc(a.name)}</option>`).join("");
   $("#modalHost").innerHTML=`
-  <div class="overlay" data-close="1"><div class="modal" role="dialog" aria-label="Project">
+  <div class="overlay"><div class="modal" role="dialog" aria-label="Project">
     <h2>${p?"Edit project":"New project"}</h2>
     <div class="field"><label>Project name</label><input id="pmName" value="${esc(p?.name||"")}" placeholder="e.g. Achieve ISO 27001 certification"></div>
     <div class="field"><label>Desired outcome — what does done look like?</label><input id="pmOutcome" value="${esc(p?.desiredOutcome||"")}"></div>
@@ -2436,7 +2426,7 @@ UI.projectModal = function(id){
 
 UI.captureModal = function(preset){
   $("#modalHost").innerHTML=`
-  <div class="overlay" data-close="1"><div class="modal" role="dialog" aria-label="Capture" style="max-width:560px">
+  <div class="overlay"><div class="modal" role="dialog" aria-label="Capture" style="max-width:560px">
     <h2>Capture</h2>
     <textarea id="cmText" placeholder="What has your attention? One item per line.&#10;Shorthand: Email Mark about ISO SOW @Email #ISO high" style="min-height:110px;font-size:14.5px" autofocus></textarea>
     <div class="modalfoot"><span class="eyebrow" style="margin-right:auto;align-self:center">Ctrl+Enter to capture</span>
@@ -2838,7 +2828,6 @@ document.addEventListener("DOMContentLoaded", async ()=>{
       <div class="modalfoot"><button class="btn" id="moreClose">Close</button></div>
     </div></div>`;
     $("#moreClose").onclick=closeModal;
-    $("#ovMore").addEventListener("click",e=>{ if(e.target.id==="ovMore") closeModal(); });
     $$("#modalHost [data-mnav]").forEach(x=>x.onclick=()=>{ closeModal(); go(x.dataset.mnav); });
     const qc=$("#modalHost [data-mcapture]"); if(qc) qc.onclick=()=>{ closeModal(); UI.captureModal(); };
     const qs=$("#modalHost [data-msmart]"); if(qs) qs.onclick=()=>{ closeModal(); openSmartCapture(); };

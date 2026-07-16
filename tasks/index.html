@@ -448,7 +448,6 @@ function editMine(t){
     <div class="modalfoot"><button class="btn" id="emCancel">Cancel</button><button class="btn primary" id="emSave">Save</button></div>
   </div></div>`;
   $("#emCancel").onclick=closeModal;
-  $("#ovEdit").addEventListener("click",e=>{if(e.target.id==="ovEdit")closeModal();});
   $("#emTitle").focus();
   $("#emSave").onclick=()=>{
     patchTask(t.id,{title:$("#emTitle").value.trim()||t.title,category:$("#emCat").value.trim()||null,
@@ -464,7 +463,6 @@ function openComment(t){
     <div class="modalfoot"><button class="btn" id="cmCancel">Cancel</button><button class="btn primary" id="cmSave">Add comment</button></div>
   </div></div>`;
   $("#cmCancel").onclick=closeModal;
-  $("#ovCom").addEventListener("click",e=>{if(e.target.id==="ovCom")closeModal();});
   $("#cmText").focus();
   $("#cmSave").onclick=async()=>{
     const text=$("#cmText").value.trim(); if(!text){toast("Type a comment first");return;}
