@@ -561,12 +561,20 @@ const DataProvider = {
         }
       }catch(e){ /* fall through to setup */ }
     }
-    // Attempt a same-folder fetch (works when served, usually not from file://)
+    // Prefer this device's own saved data (browser backup) when it exists
+    try{
+      const p = await BackupService.loadLocal();
+      if(p && p.data && !validateData(p.data).length){
+        this.adopt(p.data,"cached",APP_CONFIG.dataSource.fileName);
+        return true;
+      }
+    }catch(e){ /* fall through */ }
+    // First run on a hosted copy: seed from the published tasks.json, then live in browser storage
     try{
       const r = await fetch("./"+APP_CONFIG.dataSource.fileName,{cache:"no-store"});
       if(r.ok){
         const obj = await r.json();
-        if(!validateData(obj).length){ this.adopt(obj,"readonly",APP_CONFIG.dataSource.fileName); return true; }
+        if(!validateData(obj).length){ this.adopt(obj,"cached",APP_CONFIG.dataSource.fileName); return true; }
       }
     }catch(e){ /* expected on file:// */ }
     return false;
@@ -623,8 +631,8 @@ const DataProvider = {
     const errs = validateData(d);
     if(errs.length){ setSaveStatus("Save blocked: "+errs[0],"err"); d.metadata.revision--; return; }
     const text = JSON.stringify(d,null,2);
-    // Always keep the browser backup current
-    await BackupService.saveLocal(d);
+    // Always keep the browser backup current (but never let demo data overwrite real data)
+    if(AppState.storageMode!=="demo") await BackupService.saveLocal(d);
     if(AppState.storageMode==="live" && AppState.fileHandle){
       try{
         // Conflict protection: has the file changed underneath us?
