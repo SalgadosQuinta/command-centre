@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "1.0",
+  "metadata": {
+    "application": "GTD Command Centre",
+    "revision": 1,
+    "createdAt": "2026-07-15T12:00:00Z",
+    "lastModified": "2026-07-15T12:00:00Z",
+    "lastModifiedBy": "You"
+  },
+  "settings": {
+    "weeklyReviewDay": "Friday",
+    "staleTaskDays": 14,
+    "staleProjectDays": 21,
+    "defaultContext": "@Computer",
+    "dateFormat": "DD/MM/YYYY"
+  },
+  "contexts": [
+    "@Computer",
+    "@Calls",
+    "@Email",
+    "@Office",
+    "@Home",
+    "@Errands",
+    "@Agenda",
+    "@Anywhere"
+  ],
+  "areas": [
+    { "id": "area_work", "name": "Work" },
+    { "id": "area_cyber", "name": "Cybersecurity" },
+    { "id": "area_business", "name": "Business" },
+    { "id": "area_personal", "name": "Personal" }
+  ],
+  "projects": [],
+  "tasks": [],
+  "reviews": []
+}

@@ -1,0 +1,1820 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GTD Command Centre</title>
+<meta name="theme-color" content="#0f1216">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script>
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
+}
+</script>
+<style>
+/* ============================================================
+   GTD COMMAND CENTRE — self-contained styles
+   Palette: ink / graphite panels / brass accent. Executive, calm.
+   ============================================================ */
+:root{
+  --bg:#0f1216; --bg2:#12161c; --panel:#171b21; --panel2:#1c212a; --line:#252b34; --line2:#2e3540;
+  --text:#e7eaee; --muted:#8a93a0; --faint:#5b6470;
+  --accent:#c9a227; --accent-ink:#0f1216; --accent-soft:rgba(201,162,39,.12);
+  --ok:#3fb27f; --warn:#e0a438; --danger:#d96459; --info:#5b8dbe; --wait:#9b7ec8;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+  --r:10px; --r-sm:7px;
+  --mono:ui-monospace,'Cascadia Code','SF Mono',Menlo,Consolas,monospace;
+  --sans:-apple-system,'Segoe UI',system-ui,Roboto,'Helvetica Neue',Arial,sans-serif;
+}
+[data-theme="light"]{
+  --bg:#f2f1ec; --bg2:#eceae4; --panel:#ffffff; --panel2:#f7f6f2; --line:#dedbd2; --line2:#cfccc2;
+  --text:#1c2128; --muted:#5d6672; --faint:#9aa2ad;
+  --accent:#8f7315; --accent-ink:#ffffff; --accent-soft:rgba(143,115,21,.10);
+  --ok:#1f8a5d; --warn:#a8721a; --danger:#b34335; --info:#33628f; --wait:#6f4fa8;
+  --shadow:0 8px 24px rgba(30,30,25,.12);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input,select,textarea{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line2);border-radius:var(--r-sm);padding:8px 10px;width:100%}
+input:focus,select:focus,textarea:focus,button:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+textarea{resize:vertical;min-height:70px}
+a{color:var(--info)}
+::placeholder{color:var(--faint)}
+h1,h2,h3{font-weight:600;letter-spacing:-.01em}
+.mono{font-family:var(--mono)}
+.hidden{display:none!important}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* ---- eyebrow / ledger labels (signature) ---- */
+.eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line2);border-radius:999px;padding:3px 10px;color:var(--muted);white-space:nowrap}
+.pill .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
+.pill.live .dot{background:var(--ok)} .pill.ro .dot{background:var(--warn)} .pill.cache .dot{background:var(--info)} .pill.demo .dot{background:var(--wait)}
+.tag{display:inline-block;font-family:var(--mono);font-size:10.5px;border:1px solid var(--line2);border-radius:4px;padding:1px 6px;color:var(--muted)}
+
+/* ---- app shell ---- */
+#app{display:none;height:100vh;grid-template-columns:216px 1fr;grid-template-rows:52px 1fr}
+#app.ready{display:grid}
+header.topbar{grid-column:1/3;display:flex;align-items:center;gap:14px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--bg2)}
+.brand{display:flex;align-items:baseline;gap:10px;min-width:200px}
+.brand b{font-size:15px;letter-spacing:-.01em}
+.brand span{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+#globalSearch{max-width:420px;flex:1}
+.topbar .spacer{flex:1}
+.savebar{display:flex;align-items:center;gap:10px}
+#saveStatus{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.05em}
+#saveStatus.dirty{color:var(--warn)} #saveStatus.err{color:var(--danger)} #saveStatus.ok{color:var(--ok)}
+
+nav.rail{border-right:1px solid var(--line);background:var(--bg2);padding:12px 8px;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
+nav.rail .navsec{margin:10px 8px 4px}
+.navbtn{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:var(--r-sm);color:var(--muted);font-size:13.5px;text-align:left}
+.navbtn svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.navbtn:hover{background:var(--panel);color:var(--text)}
+.navbtn.active{background:var(--accent-soft);color:var(--text);box-shadow:inset 2px 0 0 var(--accent)}
+.navbtn .cnt{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--faint);border:1px solid var(--line2);border-radius:999px;padding:0 7px;min-width:22px;text-align:center}
+.navbtn .cnt.hot{color:var(--accent);border-color:var(--accent)}
+.railfoot{margin-top:auto;padding:8px}
+
+main#view{overflow-y:auto;padding:22px 26px 60px;background:var(--bg)}
+.viewhead{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+.viewhead h1{font-size:21px}
+.viewhead .sub{color:var(--muted);font-size:13px;margin-top:2px}
+.viewactions{display:flex;gap:8px;flex-wrap:wrap}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.card h2{font-size:13px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.card h2 .eyebrow{font-size:10.5px}
+.grid{display:grid;gap:14px}
+.grid.c2{grid-template-columns:1fr 1fr}
+.grid.c3{grid-template-columns:repeat(3,1fr)}
+.grid.c4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:1100px){.grid.c4{grid-template-columns:1fr 1fr}.grid.c3{grid-template-columns:1fr 1fr}}
+@media(max-width:760px){.grid.c2,.grid.c3,.grid.c4{grid-template-columns:1fr}}
+
+.btn{display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--panel2);color:var(--text);font-size:13px;white-space:nowrap}
+.btn:hover{border-color:var(--faint)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.ghost{background:none;border-color:transparent;color:var(--muted)}
+.btn.ghost:hover{color:var(--text);border-color:var(--line2)}
+.btn.sm{padding:4px 9px;font-size:12px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+
+/* ---- task rows ---- */
+.tasklist{display:flex;flex-direction:column}
+.trow{display:flex;align-items:flex-start;gap:10px;padding:9px 8px;border-bottom:1px solid var(--line);border-radius:var(--r-sm);cursor:pointer}
+.trow:hover{background:var(--panel2)}
+.trow:last-child{border-bottom:none}
+.trow .chk{flex:none;width:17px;height:17px;margin-top:2px;border:1.5px solid var(--faint);border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:none}
+.trow .chk:hover{border-color:var(--ok)}
+.trow.done .chk{background:var(--ok);border-color:var(--ok)}
+.trow.done .ttl{text-decoration:line-through;color:var(--muted)}
+.trow .body{flex:1;min-width:0}
+.trow .ttl{font-size:13.5px}
+.trow .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;align-items:center}
+.trow .meta .m{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.trow .meta .m.ctx{color:var(--info)}
+.trow .meta .m.due-over{color:var(--danger)}
+.trow .meta .m.due-soon{color:var(--warn)}
+.prio{flex:none;width:3px;align-self:stretch;border-radius:2px;background:transparent;margin-top:2px;margin-bottom:2px}
+.prio.high{background:var(--warn)} .prio.critical{background:var(--danger)} .prio.low{background:var(--line2)}
+.empty{padding:26px 12px;text-align:center;color:var(--muted);font-size:13px}
+.empty .big{font-size:15px;color:var(--text);margin-bottom:4px}
+.grouphead{margin:16px 0 4px;display:flex;align-items:center;gap:8px}
+.grouphead::after{content:"";flex:1;height:1px;background:var(--line)}
+
+/* ---- stats ---- */
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:13px 15px}
+.stat .n{font-size:24px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stat .n.warn{color:var(--warn)} .stat .n.bad{color:var(--danger)} .stat .n.ok{color:var(--ok)}
+.stat .l{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+
+/* ---- modal / drawer ---- */
+.overlay{position:fixed;inset:0;background:rgba(6,8,10,.55);display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;z-index:50;backdrop-filter:blur(2px)}
+.modal{background:var(--panel);border:1px solid var(--line2);border-radius:12px;box-shadow:var(--shadow);width:100%;max-width:640px;max-height:86vh;overflow-y:auto;padding:20px}
+.modal h2{font-size:16px;margin-bottom:14px}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(480px,100%);background:var(--panel);border-left:1px solid var(--line2);box-shadow:var(--shadow);z-index:60;overflow-y:auto;padding:20px}
+.fieldrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.field{margin-bottom:10px}
+.field label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.modalfoot{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+.modalfoot .left{margin-right:auto;display:flex;gap:8px}
+
+/* ---- toasts ---- */
+#toasts{position:fixed;bottom:18px;right:18px;z-index:100;display:flex;flex-direction:column;gap:8px;max-width:360px}
+.toast{background:var(--panel);border:1px solid var(--line2);border-left:3px solid var(--info);border-radius:var(--r-sm);padding:10px 14px;box-shadow:var(--shadow);font-size:13px;display:flex;gap:10px;align-items:center;animation:tin .18s ease}
+.toast.ok{border-left-color:var(--ok)} .toast.err{border-left-color:var(--danger)} .toast.warn{border-left-color:var(--warn)}
+.toast button{color:var(--accent);font-weight:600}
+@keyframes tin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* ---- command palette ---- */
+#palette .modal{max-width:520px;padding:10px}
+#paletteInput{border:none;background:none;font-size:15px;padding:10px 12px;border-bottom:1px solid var(--line)}
+#paletteList{max-height:340px;overflow-y:auto;margin-top:6px}
+.palitem{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r-sm);cursor:pointer;font-size:13.5px}
+.palitem .k{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.palitem.sel,.palitem:hover{background:var(--accent-soft)}
+
+/* ---- setup ---- */
+#setup{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(1200px 600px at 70% -10%,var(--accent-soft),transparent),var(--bg)}
+.setupcard{width:100%;max-width:760px}
+.setupcard .mast{margin-bottom:26px}
+.setupcard .mast .eyebrow{color:var(--accent)}
+.setupcard h1{font-size:30px;letter-spacing:-.02em;margin:6px 0 4px}
+.setupcard .tag-line{color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:.06em}
+.setupopts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:640px){.setupopts{grid-template-columns:1fr}}
+.setupopt{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px;text-align:left;cursor:pointer;display:block;width:100%}
+.setupopt:hover{border-color:var(--accent)}
+.setupopt b{display:block;font-size:14.5px;margin-bottom:4px}
+.setupopt p{color:var(--muted);font-size:12.5px}
+.setupfoot{margin-top:18px;color:var(--faint);font-size:12px}
+
+/* ---- clarify ---- */
+.clarify-stage{max-width:680px;margin:0 auto}
+.clarify-q{font-size:17px;font-weight:600;margin:14px 0 10px}
+.choice-row{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0 4px}
+.progressbar{height:4px;background:var(--line);border-radius:99px;overflow:hidden;margin-bottom:16px}
+.progressbar i{display:block;height:100%;background:var(--accent)}
+
+/* ---- calendar ---- */
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.calcell{background:var(--panel);min-height:96px;padding:6px}
+.calcell.dim{background:var(--bg2)}
+.calcell .d{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.calcell.today .d{color:var(--accent);font-weight:700}
+.calev{font-size:11px;padding:2px 5px;border-radius:4px;background:var(--accent-soft);color:var(--text);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;border-left:2px solid var(--accent)}
+.caldow{background:var(--bg2);padding:5px 6px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+
+/* ---- review ---- */
+.revstep{display:flex;gap:12px;padding:12px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:10px;background:var(--panel)}
+.revstep .num{font-family:var(--mono);color:var(--faint);font-size:12px;width:22px;flex:none;padding-top:2px}
+.revstep.done{opacity:.55}
+.revstep.done .num{color:var(--ok)}
+.revstep b{display:block;margin-bottom:2px}
+.revstep p{color:var(--muted);font-size:12.5px}
+.revstep .btn{margin-left:auto;align-self:center;flex:none}
+
+/* ---- health gauge ---- */
+.healthband{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:var(--r);border:1px solid var(--line);background:var(--panel)}
+.healthband .stateword{font-family:var(--mono);letter-spacing:.12em;font-size:12px;font-weight:700}
+.healthband.clear .stateword{color:var(--ok)} .healthband.review .stateword{color:var(--warn)} .healthband.attn .stateword{color:var(--danger)}
+
+/* ---- focus filters ---- */
+.filterbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.filterbar select{width:auto;min-width:130px;padding:6px 9px;font-size:12.5px}
+.whybox{font-size:11.5px;color:var(--muted);font-family:var(--mono);margin-top:4px;border-left:2px solid var(--line2);padding-left:8px}
+
+/* ---- responsive ---- */
+#mobilenav{display:none}
+@media(max-width:860px){
+  #app.ready{grid-template-columns:1fr;grid-template-rows:52px 1fr 54px}
+  nav.rail{display:none}
+  #mobilenav{display:flex;grid-row:3;border-top:1px solid var(--line);background:var(--bg2);justify-content:space-around;align-items:center}
+  #mobilenav .navbtn{flex-direction:column;gap:2px;font-size:10px;padding:6px 4px;width:auto}
+  main#view{padding:16px 14px 70px}
+  .drawer{width:100%}
+  #globalSearch{max-width:none}
+  .brand span{display:none}
+}
+.kbd{font-family:var(--mono);font-size:10.5px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;padding:0 5px;color:var(--muted)}
+table.plain{width:100%;border-collapse:collapse;font-size:13px}
+table.plain th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line2)}
+table.plain td{padding:8px;border-bottom:1px solid var(--line)}
+.projcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;cursor:pointer}
+.projcard:hover{border-color:var(--faint)}
+.projcard .warnflag{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--danger);border:1px solid var(--danger);border-radius:4px;padding:1px 6px}
+.pbar{height:5px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:10px}
+.pbar i{display:block;height:100%;background:var(--ok)}
+</style>
+</head>
+<body>
+<!-- ================= SETUP / FIRST RUN ================= -->
+<div id="setup">
+  <div class="setupcard">
+    <div class="mast">
+      <div class="eyebrow">Local file · No cloud · No accounts</div>
+      <h1 id="setupTitle">GTD Command Centre</h1>
+      <div class="tag-line" id="setupSubtitle">Capture. Clarify. Organise. Reflect. Engage.</div>
+    </div>
+    <h2 style="font-size:15px;margin-bottom:12px">Connect your GTD data</h2>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:16px">This application keeps everything in a single <span class="mono">tasks.json</span> file stored next to <span class="mono">index.html</span>. Nothing leaves your machine.</p>
+    <div class="setupopts">
+      <button class="setupopt" id="setupConnect"><b>Connect existing tasks.json</b><p>Select the tasks.json file in this folder. Changes save straight back to it.</p></button>
+      <button class="setupopt" id="setupCreate"><b>Create new tasks.json</b><p>Start fresh. A new data file is created in a location you choose.</p></button>
+      <button class="setupopt" id="setupImport"><b>Import backup</b><p>Load a gtd-backup JSON file exported previously.</p></button>
+      <button class="setupopt" id="setupDemo"><b>Explore demo</b><p>Look around with sample data. Nothing is saved to a file until you connect one.</p></button>
+    </div>
+    <div id="setupRestore" class="hidden" style="margin-top:14px"><button class="btn" id="setupRestoreBtn">Restore local backup found in this browser</button></div>
+    <div class="setupfoot">Runs entirely offline · One HTML file · Your data stays in your folder</div>
+  </div>
+</div>
+
+<!-- ================= APP SHELL ================= -->
+<div id="app">
+  <header class="topbar">
+    <div class="brand"><b id="brandName">GTD Command Centre</b><span id="brandSub">Capture · Clarify · Organise · Reflect · Engage</span></div>
+    <input id="globalSearch" type="search" placeholder="Search tasks, projects, notes…  ( / )" aria-label="Global search">
+    <div class="spacer"></div>
+    <div class="savebar">
+      <span class="pill demo" id="modePill"><span class="dot"></span><span id="modePillText">Demo mode</span></span>
+      <span id="saveStatus" aria-live="polite"></span>
+      <button class="btn sm" id="saveNowBtn" title="Save now (Ctrl+S)">Save now</button>
+      <button class="btn sm ghost" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+    </div>
+  </header>
+
+  <nav class="rail" aria-label="Main navigation">
+    <button class="btn primary" id="captureBtn" style="margin:2px 6px 10px;justify-content:center">+ Capture <span class="kbd" style="border-color:rgba(0,0,0,.25);color:inherit">C</span></button>
+    <div class="navsec eyebrow">Engage</div>
+    <button class="navbtn" data-view="focus"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>Focus</button>
+    <button class="navbtn" data-view="calendar"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</button>
+    <div class="navsec eyebrow">Process</div>
+    <button class="navbtn" data-view="inbox"><svg viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l2 3h4l2-3h5"/></svg>Inbox<span class="cnt" id="cntInbox"></span></button>
+    <button class="navbtn" data-view="clarify"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 1 4 12.7V17H8v-2.3A7 7 0 0 1 12 2z"/></svg>Clarify<span class="cnt" id="cntClarify"></span></button>
+    <div class="navsec eyebrow">Organise</div>
+    <button class="navbtn" data-view="next"><svg viewBox="0 0 24 24"><path d="M5 4l14 8-14 8z"/></svg>Next actions<span class="cnt" id="cntNext"></span></button>
+    <button class="navbtn" data-view="projects"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Projects<span class="cnt" id="cntProjects"></span></button>
+    <button class="navbtn" data-view="waiting"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Waiting for<span class="cnt" id="cntWaiting"></span></button>
+    <button class="navbtn" data-view="someday"><svg viewBox="0 0 24 24"><path d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/></svg>Someday / Maybe<span class="cnt" id="cntSomeday"></span></button>
+    <button class="navbtn" data-view="reference"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4H6.5A2.5 2.5 0 0 0 4 6.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>Reference</button>
+    <div class="navsec eyebrow">Reflect</div>
+    <button class="navbtn" data-view="review"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>Review<span class="cnt" id="cntReview"></span></button>
+    <div class="navsec eyebrow">System</div>
+    <button class="navbtn" data-view="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>Data &amp; settings</button>
+    <div class="railfoot"><span class="eyebrow"><span class="kbd">Ctrl+K</span> commands</span></div>
+  </nav>
+
+  <main id="view" tabindex="-1"></main>
+
+  <nav id="mobilenav" aria-label="Mobile navigation">
+    <button class="navbtn" data-view="focus">◎<br>Focus</button>
+    <button class="navbtn" data-view="inbox">▤<br>Inbox</button>
+    <button class="navbtn" data-view="next">▶<br>Next</button>
+    <button class="navbtn" data-view="projects">▣<br>Projects</button>
+    <button class="navbtn" data-view="review">↻<br>Review</button>
+  </nav>
+</div>
+
+<div id="toasts" aria-live="polite"></div>
+<div id="modalHost"></div>
+<input type="file" id="fileInput" accept=".json,application/json" class="hidden" aria-hidden="true">
+<script>
+"use strict";
+/* ============================================================
+   CONFIGURATION
+   ============================================================ */
+const APP_CONFIG = {
+  appName: "GTD Command Centre",
+  appSubtitle: "Capture. Clarify. Organise. Reflect. Engage.",
+  dataSource: { type: "local-json-file", fileName: "tasks.json" },
+  schemaVersion: "1.0",
+  autosaveDelayMs: 1200,
+  backupKey: "gtdcc.backup",
+  themeKey: "gtdcc.theme",
+  handleDb: "gtdcc-handles"
+};
+
+/* ============================================================
+   APPLICATION STATE
+   ============================================================ */
+const AppState = {
+  data: null,
+  selectedTaskId: null,
+  currentView: "focus",
+  currentProjectId: null,
+  calMode: "month",
+  calCursor: null,           // Date for calendar navigation
+  filters: { context:"", time:"", energy:"", priority:"", group:"context" },
+  searchQuery: "",
+  dirty: false,
+  fileHandle: null,
+  storageMode: "demo",       // live | readonly | cached | demo
+  lastLoadedAt: null,
+  lastSavedAt: null,
+  loadedRevision: 0,
+  saveTimer: null,
+  clarifyIndex: 0,
+  undoStack: []
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uid = p => (p||"id")+"_"+(crypto.randomUUID ? crypto.randomUUID().slice(0,12) : Date.now().toString(36)+Math.random().toString(36).slice(2,8));
+const nowISO = () => new Date().toISOString();
+const todayStr = () => { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+const fmtDate = iso => { if(!iso) return ""; const d=new Date(iso.length===10?iso+"T00:00:00":iso); if(isNaN(d)) return ""; return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}); };
+const fmtDT = iso => { if(!iso) return "—"; const d=new Date(iso); return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})+", "+d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}); };
+const daysBetween = (a,b) => Math.round((b-a)/86400000);
+const dateOf = s => s ? new Date(s.length===10 ? s+"T00:00:00" : s) : null;
+const debounce = (fn,ms) => { let t; return (...a)=>{clearTimeout(t); t=setTimeout(()=>fn(...a),ms);} };
+
+function toast(msg, kind="info", action){
+  const el=document.createElement("div"); el.className="toast "+kind;
+  el.innerHTML=`<span>${esc(msg)}</span>`;
+  if(action){ const b=document.createElement("button"); b.textContent=action.label; b.onclick=()=>{action.fn(); el.remove();}; el.appendChild(b); }
+  $("#toasts").appendChild(el);
+  setTimeout(()=>el.remove(), action?9000:4500);
+}
+
+/* ============================================================
+   EMPTY / DEMO DATA
+   ============================================================ */
+function emptyData(){
+  return {
+    schemaVersion: APP_CONFIG.schemaVersion,
+    metadata: { application: APP_CONFIG.appName, revision: 1, createdAt: nowISO(), lastModified: nowISO(), lastModifiedBy: "You" },
+    settings: { weeklyReviewDay:"Friday", staleTaskDays:14, staleProjectDays:21, defaultContext:"@Computer", dateFormat:"DD/MM/YYYY" },
+    contexts: ["@Computer","@Calls","@Email","@Office","@Home","@Errands","@Agenda","@Anywhere"],
+    areas: [
+      {id:"area_work",name:"Work"},{id:"area_cyber",name:"Cybersecurity"},
+      {id:"area_business",name:"Business"},{id:"area_personal",name:"Personal"}
+    ],
+    projects: [], tasks: [], reviews: []
+  };
+}
+
+function demoData(){
+  const d = emptyData();
+  d.metadata.lastModifiedBy = "Demo";
+  const t = todayStr();
+  const shift = n => { const x=new Date(); x.setDate(x.getDate()+n); return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0"); };
+  const old = n => { const x=new Date(); x.setDate(x.getDate()-n); return x.toISOString(); };
+  d.projects = [
+    {id:"p1",name:"Achieve ISO 27001 certification",desiredOutcome:"The organisation achieves ISO 27001 certification",purpose:"Independent assurance over information security governance",status:"active",areaId:"area_cyber",owner:"Me",startDate:shift(-60),targetDate:shift(300),reviewDate:shift(3),notes:"External consultancy engaged. Stage 1 gap analysis under way.",createdAt:old(60),updatedAt:old(2)},
+    {id:"p2",name:"Cyber Essentials Plus renewal",desiredOutcome:"CE+ certificate renewed before the deadline",purpose:"Maintain baseline assurance for clients",status:"active",areaId:"area_cyber",owner:"Me",startDate:shift(-30),targetDate:shift(75),reviewDate:shift(1),notes:"",createdAt:old(30),updatedAt:old(1)},
+    {id:"p3",name:"Office network refresh",desiredOutcome:"New switching and Wi-Fi live in the London office",purpose:"Replace end-of-life hardware and improve resilience",status:"active",areaId:"area_work",owner:"Me",startDate:shift(-20),targetDate:shift(45),reviewDate:shift(7),notes:"",createdAt:old(20),updatedAt:old(16)},
+    {id:"p4",name:"Monthly board reporting pack",desiredOutcome:"Repeatable board reporting cycle established",purpose:"Consistent visibility of IT and cyber posture",status:"active",areaId:"area_work",owner:"Me",startDate:shift(-90),targetDate:null,reviewDate:shift(-2),notes:"",createdAt:old(90),updatedAt:old(25)},
+    {id:"p5",name:"Farm irrigation upgrade",desiredOutcome:"Drip irrigation covering the full orchard block",purpose:"Reduce water use and protect the young trees",status:"onhold",areaId:"area_business",owner:"Me",startDate:shift(-45),targetDate:shift(120),reviewDate:shift(14),notes:"Waiting on borehole survey.",createdAt:old(45),updatedAt:old(10)},
+    {id:"p6",name:"Family holiday planning",desiredOutcome:"December holiday booked and paid for",purpose:"Protected family time",status:"someday",areaId:"area_personal",owner:"Me",startDate:null,targetDate:null,reviewDate:null,notes:"",createdAt:old(15),updatedAt:old(15)}
+  ];
+  const mk=(id,title,st,extra)=>Object.assign({id,title,description:"",status:st,clarified:st!=="inbox",projectId:null,areaId:null,context:null,tags:[],priority:"normal",energy:"medium",estimatedMinutes:null,dueDate:null,scheduledDate:null,startDate:null,waitingFor:null,createdAt:old(5),updatedAt:old(2),completedAt:null,notes:"",subtasks:[],review:{lastReviewedAt:null,nextReviewAt:null}},extra||{});
+  d.tasks = [
+    // Inbox (8)
+    mk("i1","ISO 27001 statement of work","inbox",{createdAt:old(1)}),
+    mk("i2","New starter laptop for finance team","inbox"),
+    mk("i3","Idea: quarterly phishing simulation league table","inbox"),
+    mk("i4","Renew domain certificates","inbox"),
+    mk("i5","Book dentist appointment","inbox"),
+    mk("i6","Supplier invoice query from accounts","inbox"),
+    mk("i7","Look into solar quote for the farm","inbox"),
+    mk("i8","Reading list: board-level cyber reporting","inbox"),
+    // Next actions (20)
+    mk("n1","Email consultancy to request the ISO 27001 statement of work","next",{projectId:"p1",areaId:"area_cyber",context:"@Email",priority:"high",energy:"low",estimatedMinutes:10,tags:["ISO27001"]}),
+    mk("n2","Draft the ISO 27001 scope statement","next",{projectId:"p1",areaId:"area_cyber",context:"@Computer",priority:"high",energy:"high",estimatedMinutes:90,tags:["ISO27001"]}),
+    mk("n3","Review Cyber Essentials Plus scope with the assessor","next",{projectId:"p2",areaId:"area_cyber",context:"@Calls",priority:"critical",energy:"medium",estimatedMinutes:30,dueDate:shift(2),tags:["CE+"]}),
+    mk("n4","Confirm patching evidence covers all in-scope devices","next",{projectId:"p2",areaId:"area_cyber",context:"@Computer",priority:"high",energy:"medium",estimatedMinutes:45,dueDate:shift(6)}),
+    mk("n5","Get two quotes for replacement switches","next",{projectId:"p3",areaId:"area_work",context:"@Email",priority:"normal",energy:"low",estimatedMinutes:20}),
+    mk("n6","Walk the comms room and photograph the rack layout","next",{projectId:"p3",areaId:"area_work",context:"@Office",priority:"normal",energy:"medium",estimatedMinutes:30}),
+    mk("n7","Prepare the monthly cybersecurity report","next",{projectId:"p4",areaId:"area_cyber",context:"@Computer",priority:"high",energy:"high",estimatedMinutes:120,dueDate:shift(4),tags:["Board"]}),
+    mk("n8","Collect incident metrics for the reporting pack","next",{projectId:"p4",areaId:"area_cyber",context:"@Computer",priority:"normal",energy:"medium",estimatedMinutes:40}),
+    mk("n9","Call the borehole surveyor for availability","next",{projectId:"p5",areaId:"area_business",context:"@Calls",priority:"normal",energy:"low",estimatedMinutes:10}),
+    mk("n10","Review project budget for the network refresh","next",{projectId:"p3",areaId:"area_work",context:"@Computer",priority:"high",energy:"high",estimatedMinutes:60,dueDate:shift(9)}),
+    mk("n11","Follow up on outstanding infrastructure action list","next",{areaId:"area_work",context:"@Email",priority:"normal",energy:"low",estimatedMinutes:15,createdAt:old(20),updatedAt:old(18)}),
+    mk("n12","Update the joiners and leavers process document","next",{areaId:"area_work",context:"@Computer",priority:"low",energy:"medium",estimatedMinutes:45,createdAt:old(30),updatedAt:old(22)}),
+    mk("n13","Book MOT for the car","next",{areaId:"area_personal",context:"@Calls",priority:"normal",energy:"low",estimatedMinutes:10,dueDate:shift(12)}),
+    mk("n14","Buy printer toner for the office","next",{areaId:"area_work",context:"@Errands",priority:"low",energy:"low",estimatedMinutes:20}),
+    mk("n15","Test restore from last week's backups","next",{areaId:"area_cyber",context:"@Computer",priority:"high",energy:"high",estimatedMinutes:90,tags:["Resilience"]}),
+    mk("n16","Agenda point for Luke: MFA exceptions review","next",{areaId:"area_cyber",context:"@Agenda",priority:"normal",energy:"low",estimatedMinutes:5}),
+    mk("n17","Read the new supplier security questionnaire","next",{areaId:"area_work",context:"@Anywhere",priority:"normal",energy:"medium",estimatedMinutes:25}),
+    mk("n18","Schedule family commitment for Saturday","next",{areaId:"area_personal",context:"@Home",priority:"normal",energy:"low",estimatedMinutes:5,scheduledDate:t}),
+    mk("n19","Research fencing options for the vegetable garden","next",{areaId:"area_business",context:"@Computer",priority:"low",energy:"medium",estimatedMinutes:30}),
+    mk("n20","Draft comms for the password manager rollout","next",{areaId:"area_cyber",context:"@Computer",priority:"normal",energy:"medium",estimatedMinutes:40,scheduledDate:shift(1)}),
+    // Waiting (5)
+    mk("w1","SOW and pricing from the ISO consultancy","waiting",{projectId:"p1",areaId:"area_cyber",waitingFor:{person:"Mark",organisation:"Consultancy",delegatedDate:shift(-6),expectedDate:shift(-1),followUpDate:shift(-1),lastFollowUp:null},priority:"high"}),
+    mk("w2","Confirmed CE+ assessment dates","waiting",{projectId:"p2",areaId:"area_cyber",waitingFor:{person:"Assessor",organisation:"Certification body",delegatedDate:shift(-4),expectedDate:shift(3),followUpDate:shift(3),lastFollowUp:null}}),
+    mk("w3","Switch lead times from the reseller","waiting",{projectId:"p3",areaId:"area_work",waitingFor:{person:"Sales team",organisation:"Reseller",delegatedDate:shift(-2),expectedDate:shift(5),followUpDate:shift(5),lastFollowUp:null}}),
+    mk("w4","HR sign-off on the contractor agreement","waiting",{areaId:"area_work",waitingFor:{person:"HR",organisation:"",delegatedDate:shift(-9),expectedDate:shift(-3),followUpDate:shift(-3),lastFollowUp:null},priority:"high"}),
+    mk("w5","Borehole survey report","waiting",{projectId:"p5",areaId:"area_business",waitingFor:{person:"Surveyor",organisation:"",delegatedDate:shift(-12),expectedDate:shift(2),followUpDate:shift(2),lastFollowUp:null}}),
+    // Someday (8)
+    mk("s1","Learn to fly a drone properly and get the A2 CofC","someday",{areaId:"area_personal",tags:["Learning"]}),
+    mk("s2","Evaluate a SIEM upgrade","someday",{areaId:"area_cyber",tags:["Technology"]}),
+    mk("s3","Research property opportunity near the farm","someday",{areaId:"area_business",tags:["Property"]}),
+    mk("s4","Write an internal cyber awareness handbook","someday",{areaId:"area_cyber",tags:["Creative"]}),
+    mk("s5","Trip to Japan","someday",{areaId:"area_personal",tags:["Travel"]}),
+    mk("s6","Automate the monthly KPI collection","someday",{areaId:"area_work",tags:["Technology"]}),
+    mk("s7","Set up a family investment review rhythm","someday",{areaId:"area_personal",tags:["Investments"]}),
+    mk("s8","Plant a second orchard block","someday",{areaId:"area_business",tags:["Future Projects"]}),
+    // Reference
+    mk("r1","Comms room access procedure","reference",{areaId:"area_work",notes:"Badge access via facilities. Escort required for third parties."}),
+    mk("r2","Insurance policy numbers","reference",{areaId:"area_personal",notes:"Stored in the safe. Renewal falls in November."}),
+    // Scheduled / calendar
+    mk("c1","CE+ pre-assessment call","scheduled",{projectId:"p2",areaId:"area_cyber",scheduledDate:shift(2),context:"@Calls",priority:"critical"}),
+    mk("c2","Quarterly DR test window","scheduled",{areaId:"area_cyber",scheduledDate:shift(8),priority:"high"}),
+    mk("c3","School event","scheduled",{areaId:"area_personal",scheduledDate:shift(3)}),
+    // Completed (3)
+    mk("d1","Send the July risk register update","completed",{areaId:"area_cyber",completedAt:old(2),context:"@Email"}),
+    mk("d2","Approve the AV renewal quote","completed",{areaId:"area_work",completedAt:old(4)}),
+    mk("d3","Chase the pending firewall change","completed",{areaId:"area_cyber",completedAt:old(1)})
+  ];
+  d.reviews = [{id:"rev1",type:"weekly",startedAt:old(9),completedAt:old(9),durationMinutes:40,notes:"Cleared inbox, reprioritised CE+ actions.",itemsProcessed:14}];
+  return d;
+}
+
+/* ============================================================
+   VALIDATION
+   ============================================================ */
+function validateData(obj){
+  const errs=[];
+  if(!obj || typeof obj!=="object") return ["Not a JSON object"];
+  for(const k of ["metadata","settings","contexts","areas","projects","tasks","reviews"]) if(!(k in obj)) errs.push("Missing section: "+k);
+  if(errs.length) return errs;
+  if(!Array.isArray(obj.tasks)||!Array.isArray(obj.projects)) errs.push("tasks and projects must be arrays");
+  const ids=new Set();
+  for(const t of obj.tasks||[]){ if(!t.id||!("title" in t)) {errs.push("Task missing id or title"); break;} if(ids.has(t.id)){errs.push("Duplicate task id: "+t.id); break;} ids.add(t.id); }
+  const pids=new Set((obj.projects||[]).map(p=>p.id));
+  for(const t of obj.tasks||[]) if(t.projectId && !pids.has(t.projectId)) t.projectId=null; // repair dangling refs
+  return errs;
+}
+
+/* ============================================================
+   BACKUP SERVICE (browser cache, IndexedDB with localStorage fallback)
+   ============================================================ */
+const BackupService = {
+  db:null,
+  async init(){
+    if(!("indexedDB" in window)) return;
+    try{
+      this.db = await new Promise((res,rej)=>{
+        const rq=indexedDB.open(APP_CONFIG.handleDb,1);
+        rq.onupgradeneeded=()=>{const d=rq.result; if(!d.objectStoreNames.contains("kv")) d.createObjectStore("kv");};
+        rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error);
+      });
+    }catch(e){ this.db=null; }
+  },
+  async idbSet(k,v){ if(!this.db) return false; return new Promise(res=>{ try{ const tx=this.db.transaction("kv","readwrite"); tx.objectStore("kv").put(v,k); tx.oncomplete=()=>res(true); tx.onerror=()=>res(false);}catch(e){res(false);} }); },
+  async idbGet(k){ if(!this.db) return null; return new Promise(res=>{ try{ const tx=this.db.transaction("kv","readonly"); const rq=tx.objectStore("kv").get(k); rq.onsuccess=()=>res(rq.result??null); rq.onerror=()=>res(null);}catch(e){res(null);} }); },
+  async saveLocal(data){
+    const payload={savedAt:nowISO(),data};
+    const ok = await this.idbSet("backup",payload);
+    if(!ok){ try{ localStorage.setItem(APP_CONFIG.backupKey, JSON.stringify(payload)); }catch(e){} }
+    return true;
+  },
+  async loadLocal(){
+    let p = await this.idbGet("backup");
+    if(!p){ try{ const raw=localStorage.getItem(APP_CONFIG.backupKey); if(raw) p=JSON.parse(raw); }catch(e){} }
+    return p||null;
+  },
+  async saveHandle(h){ await this.idbSet("fileHandle",h); },
+  async loadHandle(){ return await this.idbGet("fileHandle"); }
+};
+
+/* ============================================================
+   FILE SERVICE — local tasks.json access
+   ============================================================ */
+const FileService = {
+  supported: "showOpenFilePicker" in window,
+  async pickOpen(){
+    const [h] = await window.showOpenFilePicker({types:[{description:"GTD data",accept:{"application/json":[".json"]}}],multiple:false});
+    return h;
+  },
+  async pickCreate(){
+    return await window.showSaveFilePicker({suggestedName:APP_CONFIG.dataSource.fileName,types:[{description:"GTD data",accept:{"application/json":[".json"]}}]});
+  },
+  async read(handle){
+    const f = await handle.getFile();
+    return { text: await f.text(), lastModified: f.lastModified, name: f.name };
+  },
+  async write(handle, text){
+    const w = await handle.createWritable();
+    await w.write(text); await w.close();
+  },
+  async verifyPermission(handle, write){
+    const opts={mode: write?"readwrite":"read"};
+    if(await handle.queryPermission(opts)==="granted") return true;
+    if(await handle.requestPermission(opts)==="granted") return true;
+    return false;
+  }
+};
+
+/* ============================================================
+   DATA PROVIDER — orchestrates load / save / modes
+   ============================================================ */
+const DataProvider = {
+  fileLastModified: null,
+  async initialise(){
+    await BackupService.init();
+    // Attempt to restore a persisted file handle
+    if(FileService.supported){
+      try{
+        const h = await BackupService.loadHandle();
+        if(h && await h.queryPermission({mode:"readwrite"})==="granted"){
+          const {text,lastModified,name} = await FileService.read(h);
+          const obj = JSON.parse(text);
+          const errs = validateData(obj);
+          if(!errs.length){
+            AppState.fileHandle=h; this.fileLastModified=lastModified;
+            this.adopt(obj,"live",name);
+            return true;
+          }
+        }
+      }catch(e){ /* fall through to setup */ }
+    }
+    // Attempt a same-folder fetch (works when served, usually not from file://)
+    try{
+      const r = await fetch("./"+APP_CONFIG.dataSource.fileName,{cache:"no-store"});
+      if(r.ok){
+        const obj = await r.json();
+        if(!validateData(obj).length){ this.adopt(obj,"readonly",APP_CONFIG.dataSource.fileName); return true; }
+      }
+    }catch(e){ /* expected on file:// */ }
+    return false;
+  },
+  adopt(obj, mode, name){
+    AppState.data = obj;
+    AppState.storageMode = mode;
+    AppState.lastLoadedAt = nowISO();
+    AppState.loadedRevision = obj.metadata?.revision||0;
+    AppState.dirty=false;
+    AppState.fileName = name || APP_CONFIG.dataSource.fileName;
+  },
+  async connectExisting(){
+    if(!FileService.supported){ $("#fileInput").dataset.purpose="open"; $("#fileInput").click(); return; }
+    try{
+      const h = await FileService.pickOpen();
+      const canWrite = await FileService.verifyPermission(h,true);
+      const {text,lastModified,name} = await FileService.read(h);
+      const obj = JSON.parse(text);
+      const errs = validateData(obj);
+      if(errs.length){ toast("The JSON file contains invalid data: "+errs[0],"err"); return; }
+      AppState.fileHandle=h; this.fileLastModified=lastModified;
+      this.adopt(obj, canWrite?"live":"readonly", name);
+      await BackupService.saveHandle(h);
+      enterApp(); toast(canWrite?"Connected to "+name:"Connected read-only — use Save JSON to keep changes", canWrite?"ok":"warn");
+    }catch(e){ if(e && e.name==="AbortError") return; toast("Unable to open the data file","err"); }
+  },
+  async createNew(){
+    const fresh = emptyData();
+    if(FileService.supported){
+      try{
+        const h = await FileService.pickCreate();
+        await FileService.write(h, JSON.stringify(fresh,null,2));
+        const canWrite = await FileService.verifyPermission(h,true);
+        AppState.fileHandle=h;
+        const f=await h.getFile(); this.fileLastModified=f.lastModified;
+        this.adopt(fresh, canWrite?"live":"readonly", h.name);
+        await BackupService.saveHandle(h);
+        enterApp(); toast("Created "+h.name,"ok");
+        return;
+      }catch(e){ if(e && e.name==="AbortError") return; }
+    }
+    // Fallback: download a starter file and run cached
+    downloadJSON(fresh, APP_CONFIG.dataSource.fileName);
+    this.adopt(fresh,"cached",APP_CONFIG.dataSource.fileName);
+    enterApp(); toast("A new tasks.json has been downloaded — keep it next to index.html. Changes are cached in this browser until you connect the file.","warn");
+  },
+  async reconnect(){ await this.connectExisting(); },
+  async save(manual){
+    if(!AppState.data) return;
+    const d=AppState.data;
+    d.metadata.lastModified = nowISO();
+    d.metadata.revision = (d.metadata.revision||0)+1;
+    const errs = validateData(d);
+    if(errs.length){ setSaveStatus("Save blocked: "+errs[0],"err"); d.metadata.revision--; return; }
+    const text = JSON.stringify(d,null,2);
+    // Always keep the browser backup current
+    await BackupService.saveLocal(d);
+    if(AppState.storageMode==="live" && AppState.fileHandle){
+      try{
+        // Conflict protection: has the file changed underneath us?
+        try{
+          const f = await AppState.fileHandle.getFile();
+          if(this.fileLastModified && f.lastModified > this.fileLastModified + 500){
+            let onDisk=null; try{ onDisk=JSON.parse(await f.text()); }catch(e){}
+            const diskRev = onDisk?.metadata?.revision ?? "?";
+            d.metadata.revision--; // roll back until resolved
+            UI.conflictDialog(diskRev, text);
+            return;
+          }
+        }catch(e){ /* if we cannot stat, attempt the write anyway */ }
+        setSaveStatus("Saving…");
+        await FileService.write(AppState.fileHandle, text);
+        const f2 = await AppState.fileHandle.getFile();
+        this.fileLastModified = f2.lastModified;
+        AppState.dirty=false; AppState.lastSavedAt=nowISO(); AppState.loadedRevision=d.metadata.revision;
+        setSaveStatus("Saved to "+ (AppState.fileName||"tasks.json"),"ok");
+      }catch(e){
+        AppState.dirty=true;
+        setSaveStatus("Save failed — local backup saved","err");
+        toast("The file could not be saved. Your changes are protected in a local backup. Try Reconnect file in Data & settings.","err");
+      }
+    }else if(AppState.storageMode==="readonly"){
+      AppState.dirty=true;
+      setSaveStatus("Read only · Save required","dirty");
+      if(manual){ downloadJSON(d, AppState.fileName||"tasks.json"); AppState.dirty=false; AppState.lastSavedAt=nowISO(); setSaveStatus("Exported "+(AppState.fileName||"tasks.json"),"ok"); }
+    }else if(AppState.storageMode==="cached"){
+      AppState.dirty=false; AppState.lastSavedAt=nowISO();
+      setSaveStatus("Local backup saved","ok");
+    }else{ // demo
+      AppState.dirty=false;
+      setSaveStatus("Demo mode · not saved to file","dirty");
+    }
+    updateModePill();
+  }
+};
+
+function downloadJSON(obj, name){
+  const blob = new Blob([JSON.stringify(obj,null,2)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+
+/* Debounced autosave */
+const scheduleSave = debounce(()=>DataProvider.save(false), APP_CONFIG.autosaveDelayMs);
+function markDirty(){
+  if(!AppState.data) return;
+  AppState.dirty=true;
+  setSaveStatus("Unsaved changes","dirty");
+  scheduleSave();
+}
+function setSaveStatus(msg, cls){
+  const el=$("#saveStatus"); if(!el) return;
+  el.textContent=msg||""; el.className=cls||"";
+}
+function updateModePill(){
+  const pill=$("#modePill"), txt=$("#modePillText");
+  const m=AppState.storageMode;
+  pill.className="pill "+(m==="live"?"live":m==="readonly"?"ro":m==="cached"?"cache":"demo");
+  txt.textContent = m==="live" ? ("Live file · "+(AppState.fileName||"tasks.json"))
+    : m==="readonly" ? "Read only · save required"
+    : m==="cached" ? "Cached copy"
+    : "Demo mode";
+}
+/* ============================================================
+   TASK / PROJECT / GTD SERVICES
+   ============================================================ */
+const TaskService = {
+  all(){ return AppState.data?.tasks||[]; },
+  get(id){ return this.all().find(t=>t.id===id); },
+  byStatus(s){ return this.all().filter(t=>t.status===s); },
+  create(fields){
+    const t = Object.assign({
+      id:uid("task"), title:"", description:"", status:"inbox", clarified:false,
+      projectId:null, areaId:null, context:null, tags:[], priority:"normal", energy:"medium",
+      estimatedMinutes:null, dueDate:null, scheduledDate:null, startDate:null, waitingFor:null,
+      createdAt:nowISO(), updatedAt:nowISO(), completedAt:null, notes:"", subtasks:[],
+      review:{lastReviewedAt:null,nextReviewAt:null}
+    }, fields||{});
+    AppState.data.tasks.push(t); markDirty(); return t;
+  },
+  update(id, patch){
+    const t=this.get(id); if(!t) return null;
+    Object.assign(t, patch, {updatedAt:nowISO()}); markDirty(); return t;
+  },
+  complete(id){
+    const t=this.get(id); if(!t) return;
+    const was={status:t.status,completedAt:t.completedAt};
+    this.update(id,{status:"completed",completedAt:nowISO()});
+    toast("Completed","ok",{label:"Undo",fn:()=>{this.update(id,was); render();}});
+  },
+  remove(id){
+    const i=AppState.data.tasks.findIndex(t=>t.id===id); if(i<0) return;
+    const [t]=AppState.data.tasks.splice(i,1); markDirty();
+    toast("Deleted \u201C"+ (t.title.length>40?t.title.slice(0,40)+"…":t.title) +"\u201D","warn",
+      {label:"Undo",fn:()=>{AppState.data.tasks.splice(i,0,t); markDirty(); render();}});
+  },
+  captureLines(text){
+    const lines=text.split(/\n+/).map(l=>l.trim()).filter(Boolean);
+    const created=[];
+    for(const line of lines) created.push(this.create(this.parseQuick(line)));
+    return created;
+  },
+  parseQuick(line){
+    // Shorthand: @context #tag  priority keywords (high/critical/low). Original text preserved in notes if parsed.
+    let title=line, context=null; const tags=[]; let priority="normal";
+    const ctxM = line.match(/@([A-Za-z]+)/);
+    if(ctxM){ const c="@"+ctxM[1]; const known=AppState.data.contexts.find(x=>x.toLowerCase()===c.toLowerCase()); context=known||c; title=title.replace(ctxM[0],"").trim(); }
+    let m;
+    const tagRe=/#([A-Za-z0-9_-]+)/g;
+    while((m=tagRe.exec(line))){ tags.push(m[1]); }
+    title=title.replace(/#[A-Za-z0-9_-]+/g,"").trim();
+    const pm=title.match(/\b(critical|high|low)\b\s*$/i);
+    if(pm){ priority=pm[1].toLowerCase(); title=title.replace(pm[0],"").trim(); }
+    const changed = title!==line;
+    return {title:title||line, context, tags, priority, notes: changed?("Captured as: "+line):""};
+  }
+};
+
+const ProjectService = {
+  all(){ return AppState.data?.projects||[]; },
+  get(id){ return this.all().find(p=>p.id===id); },
+  active(){ return this.all().filter(p=>p.status==="active"); },
+  tasksOf(id){ return TaskService.all().filter(t=>t.projectId===id); },
+  nextActionsOf(id){ return this.tasksOf(id).filter(t=>t.status==="next"||t.status==="scheduled"); },
+  hasNextAction(id){ return this.nextActionsOf(id).length>0; },
+  progress(id){
+    const ts=this.tasksOf(id); if(!ts.length) return 0;
+    return Math.round(ts.filter(t=>t.status==="completed").length/ts.length*100);
+  },
+  create(fields){
+    const p=Object.assign({id:uid("project"),name:"",desiredOutcome:"",purpose:"",status:"active",areaId:null,owner:"",startDate:null,targetDate:null,reviewDate:null,notes:"",createdAt:nowISO(),updatedAt:nowISO()},fields||{});
+    AppState.data.projects.push(p); markDirty(); return p;
+  },
+  update(id,patch){ const p=this.get(id); if(!p) return; Object.assign(p,patch,{updatedAt:nowISO()}); markDirty(); return p; },
+  remove(id){
+    const i=AppState.data.projects.findIndex(p=>p.id===id); if(i<0) return;
+    const [p]=AppState.data.projects.splice(i,1);
+    TaskService.all().forEach(t=>{ if(t.projectId===id) t.projectId=null; });
+    markDirty();
+    toast("Project deleted","warn",{label:"Undo",fn:()=>{AppState.data.projects.splice(i,0,p); markDirty(); render();}});
+  }
+};
+
+const GTDService = {
+  overdue(){ const t0=dateOf(todayStr()); return TaskService.all().filter(t=>!["completed","cancelled","someday","reference"].includes(t.status)&&t.dueDate&&dateOf(t.dueDate)<t0); },
+  dueSoon(days=7){ const t0=dateOf(todayStr()); return TaskService.all().filter(t=>["next","scheduled","waiting"].includes(t.status)&&t.dueDate&&daysBetween(t0,dateOf(t.dueDate))>=0&&daysBetween(t0,dateOf(t.dueDate))<=days); },
+  today(){ const ts=todayStr(); return TaskService.all().filter(t=>!["completed","cancelled"].includes(t.status)&&(t.scheduledDate===ts||t.dueDate===ts)); },
+  upcoming(days=7){ const t0=dateOf(todayStr()); return TaskService.all().filter(t=>["next","scheduled","waiting"].includes(t.status)&&((t.scheduledDate&&daysBetween(t0,dateOf(t.scheduledDate))>0&&daysBetween(t0,dateOf(t.scheduledDate))<=days)||(t.dueDate&&daysBetween(t0,dateOf(t.dueDate))>0&&daysBetween(t0,dateOf(t.dueDate))<=days))); },
+  stale(){
+    const days=AppState.data.settings.staleTaskDays||14; const cut=Date.now()-days*86400000;
+    return TaskService.all().filter(t=>["next","waiting"].includes(t.status)&&new Date(t.updatedAt).getTime()<cut);
+  },
+  waitingOverdue(){ const t0=dateOf(todayStr()); return TaskService.byStatus("waiting").filter(t=>t.waitingFor?.followUpDate&&dateOf(t.waitingFor.followUpDate)<=t0); },
+  projectsNoNext(){ return ProjectService.active().filter(p=>!ProjectService.hasNextAction(p.id)); },
+  projectsReviewDue(){ const t0=dateOf(todayStr()); return ProjectService.active().filter(p=>p.reviewDate&&dateOf(p.reviewDate)<=t0); },
+  lastWeeklyReview(){
+    const r=(AppState.data.reviews||[]).filter(r=>r.type==="weekly"&&r.completedAt).sort((a,b)=>b.completedAt.localeCompare(a.completedAt));
+    return r[0]||null;
+  },
+  daysSinceWeekly(){ const r=this.lastWeeklyReview(); return r?daysBetween(new Date(r.completedAt),new Date()):999; },
+  health(){
+    const h={
+      inbox: TaskService.byStatus("inbox").length,
+      unclarified: TaskService.all().filter(t=>t.status==="inbox"&&!t.clarified).length,
+      overdue: this.overdue().length,
+      waitFollow: this.waitingOverdue().length,
+      noNext: this.projectsNoNext().length,
+      reviewDue: this.projectsReviewDue().length,
+      sinceWeekly: this.daysSinceWeekly(),
+      staleCount: this.stale().length
+    };
+    let state="clear", word="System clear";
+    if(h.overdue>0||h.noNext>1||h.sinceWeekly>10||h.waitFollow>2){ state="attn"; word="Attention required"; }
+    else if(h.inbox>4||h.noNext>0||h.sinceWeekly>7||h.waitFollow>0||h.staleCount>3){ state="review"; word="Review recommended"; }
+    return Object.assign(h,{state,word});
+  },
+  /* Smart focus scoring — transparent, rule based */
+  score(t, f){
+    const reasons=[]; let s=0;
+    const prioW={critical:40,high:25,normal:10,low:2};
+    s+=prioW[t.priority]??10; reasons.push("priority "+t.priority+" (+"+(prioW[t.priority]??10)+")");
+    if(t.dueDate){
+      const dd=daysBetween(dateOf(todayStr()),dateOf(t.dueDate));
+      if(dd<0){ s+=45; reasons.push("overdue (+45)"); }
+      else if(dd===0){ s+=35; reasons.push("due today (+35)"); }
+      else if(dd<=3){ s+=22; reasons.push("due within 3 days (+22)"); }
+      else if(dd<=7){ s+=10; reasons.push("due this week (+10)"); }
+    }
+    if(f.context && t.context===f.context){ s+=18; reasons.push("matches context (+18)"); }
+    if(f.time){
+      const lim=parseInt(f.time,10);
+      if(t.estimatedMinutes!=null){
+        if(t.estimatedMinutes<=lim){ s+=12; reasons.push("fits available time (+12)"); }
+        else { s-=100; reasons.push("too long for available time (−100)"); }
+      }
+    }
+    if(f.energy && t.energy===f.energy){ s+=10; reasons.push("matches energy (+10)"); }
+    const age=daysBetween(new Date(t.createdAt),new Date());
+    if(age>14){ s+=6; reasons.push("older than 2 weeks (+6)"); }
+    if(t.projectId){
+      const p=ProjectService.get(t.projectId);
+      if(p&&p.status==="active"){ s+=5; reasons.push("active project (+5)"); }
+    }
+    return {score:s, reasons};
+  },
+  bestNext(f, limit=8){
+    let pool=TaskService.byStatus("next");
+    if(f.context) pool=pool.filter(t=>!t.context||t.context===f.context);
+    if(f.energy) pool=pool.filter(t=>!t.energy||energyRank(t.energy)<=energyRank(f.energy));
+    if(f.priority) pool=pool.filter(t=>t.priority===f.priority);
+    return pool.map(t=>({t,...this.score(t,f)})).filter(x=>x.score>-20).sort((a,b)=>b.score-a.score).slice(0,limit);
+  }
+};
+function energyRank(e){ return {low:1,medium:2,high:3}[e]||2; }
+
+const ReviewService = {
+  weeklySteps(){
+    return [
+      {k:"clear",  t:"Get clear",              d:"Collect loose papers, notes and voice memos into the Inbox.", go:null},
+      {k:"inbox",  t:"Process Inbox to zero",   d:"Clarify every captured item.", go:"clarify"},
+      {k:"calprev",t:"Review the previous week",d:"Scan the last two weeks of the calendar for follow-ups.", go:"calendar"},
+      {k:"calnext",t:"Review the upcoming calendar",d:"Look ahead and capture any preparation actions.", go:"calendar"},
+      {k:"next",   t:"Review Next Actions",     d:"Mark off anything done; delete anything no longer needed.", go:"next"},
+      {k:"wait",   t:"Review Waiting For",      d:"Chase anything overdue; record follow-ups.", go:"waiting"},
+      {k:"proj",   t:"Review Projects",         d:"Every active project should have a next action.", go:"projects"},
+      {k:"someday",t:"Review Someday / Maybe",  d:"Activate anything whose time has come.", go:"someday"},
+      {k:"ideas",  t:"Capture new ideas",       d:"Get creative — anything else on your mind?", go:"inbox"},
+      {k:"prior",  t:"Choose the week's priorities",d:"Select the actions that matter most for the coming week.", go:"focus"}
+    ];
+  }
+};
+
+const SearchService = {
+  run(q){
+    q=q.trim().toLowerCase(); if(!q) return {tasks:[],projects:[]};
+    const inT = t => [t.title,t.description,t.notes,t.context,(t.tags||[]).join(" "),t.waitingFor?.person,t.waitingFor?.organisation].filter(Boolean).join(" ").toLowerCase().includes(q);
+    const inP = p => [p.name,p.desiredOutcome,p.purpose,p.notes,p.owner].filter(Boolean).join(" ").toLowerCase().includes(q);
+    return { tasks:TaskService.all().filter(inT).slice(0,60), projects:ProjectService.all().filter(inP).slice(0,20) };
+  }
+};
+
+/* ============================================================
+   UI RENDERING
+   ============================================================ */
+const STATUS_LABEL = {inbox:"Inbox",next:"Next action",scheduled:"Scheduled",waiting:"Waiting for",someday:"Someday / Maybe",reference:"Reference",completed:"Completed",cancelled:"Cancelled"};
+const VIEW_TITLES = {focus:"Focus",inbox:"Inbox",clarify:"Clarify",next:"Next actions",projects:"Projects",waiting:"Waiting for",calendar:"Calendar",someday:"Someday / Maybe",reference:"Reference",review:"Review",settings:"Data & settings",search:"Search results",project:"Project"};
+
+function areaName(id){ return AppState.data.areas.find(a=>a.id===id)?.name||""; }
+function projName(id){ return ProjectService.get(id)?.name||""; }
+
+function taskRowHTML(t, opts={}){
+  const t0=dateOf(todayStr());
+  let dueCls="", dueTxt="";
+  if(t.dueDate){ const dd=daysBetween(t0,dateOf(t.dueDate)); dueTxt="due "+fmtDate(t.dueDate); dueCls = dd<0?"due-over":dd<=2?"due-soon":""; }
+  const meta=[];
+  if(t.context) meta.push(`<span class="m ctx">${esc(t.context)}</span>`);
+  if(t.projectId && !opts.hideProject) meta.push(`<span class="m">▸ ${esc(projName(t.projectId))}</span>`);
+  if(dueTxt) meta.push(`<span class="m ${dueCls}">${esc(dueTxt)}</span>`);
+  if(t.scheduledDate) meta.push(`<span class="m">⧖ ${esc(fmtDate(t.scheduledDate))}</span>`);
+  if(t.estimatedMinutes) meta.push(`<span class="m">${t.estimatedMinutes}m</span>`);
+  if(t.energy&&t.energy!=="medium") meta.push(`<span class="m">${esc(t.energy)} energy</span>`);
+  if(t.waitingFor?.person) meta.push(`<span class="m" style="color:var(--wait)">⏲ ${esc(t.waitingFor.person)}</span>`);
+  for(const tg of (t.tags||[]).slice(0,3)) meta.push(`<span class="tag">${esc(tg)}</span>`);
+  if(opts.extraMeta) meta.push(opts.extraMeta);
+  const done=t.status==="completed";
+  return `<div class="trow ${done?"done":""}" data-task="${esc(t.id)}">
+    <span class="prio ${esc(t.priority)}"></span>
+    <button class="chk" data-complete="${esc(t.id)}" aria-label="${done?"Reopen":"Complete"} task">${done?'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M4 12l6 6 10-12"/></svg>':""}</button>
+    <div class="body"><div class="ttl">${esc(t.title)}</div>${meta.length?`<div class="meta">${meta.join("")}</div>`:""}</div>
+  </div>`;
+}
+function listHTML(tasks, emptyMsg, opts){
+  if(!tasks.length) return `<div class="empty">${esc(emptyMsg||"Nothing here.")}</div>`;
+  return `<div class="tasklist">${tasks.map(t=>taskRowHTML(t,opts)).join("")}</div>`;
+}
+
+const UI = {};
+
+/* ---------------- FOCUS ---------------- */
+UI.focus = function(){
+  const h=GTDService.health();
+  const f=AppState.filters;
+  const best=GTDService.bestNext(f,8);
+  const ctxOpts = AppState.data.contexts.map(c=>`<option ${f.context===c?"selected":""}>${esc(c)}</option>`).join("");
+  return `
+  <div class="viewhead"><div><h1>Focus</h1><div class="sub">What deserves your attention right now</div></div>
+    <div class="viewactions"><button class="btn" data-go="review">Start review</button></div></div>
+
+  <div class="healthband ${h.state}" style="margin-bottom:16px">
+    <span class="stateword">${h.word.toUpperCase()}</span>
+    <span style="color:var(--muted);font-size:12.5px">${h.inbox} in inbox · ${h.overdue} overdue · ${h.noNext} project${h.noNext===1?"":"s"} without a next action · last weekly review ${h.sinceWeekly>500?"never":h.sinceWeekly+" day"+(h.sinceWeekly===1?"":"s")+" ago"}</span>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <h2><span class="eyebrow" style="color:var(--accent)">Best next actions</span></h2>
+    <div class="filterbar">
+      <select id="fCtx" aria-label="Context"><option value="">Any context</option>${ctxOpts}</select>
+      <select id="fTime" aria-label="Available time"><option value="">Any duration</option>
+        <option value="5" ${f.time==="5"?"selected":""}>5 minutes</option><option value="15" ${f.time==="15"?"selected":""}>15 minutes</option>
+        <option value="30" ${f.time==="30"?"selected":""}>30 minutes</option><option value="60" ${f.time==="60"?"selected":""}>1 hour</option>
+        <option value="180" ${f.time==="180"?"selected":""}>2+ hours</option></select>
+      <select id="fEnergy" aria-label="Energy"><option value="">Any energy</option>
+        <option value="low" ${f.energy==="low"?"selected":""}>Low energy</option><option value="medium" ${f.energy==="medium"?"selected":""}>Medium energy</option><option value="high" ${f.energy==="high"?"selected":""}>High energy</option></select>
+      <select id="fPrio" aria-label="Priority"><option value="">Any priority</option>
+        ${["critical","high","normal","low"].map(p=>`<option value="${p}" ${f.priority===p?"selected":""}>${p[0].toUpperCase()+p.slice(1)}</option>`).join("")}</select>
+    </div>
+    ${best.length? `<div class="tasklist">${best.map(x=>`
+      <div>${taskRowHTML(x.t)}<div class="whybox hidden" id="why_${esc(x.t.id)}">Score ${x.score}: ${esc(x.reasons.join(" · "))}</div>
+      <button class="btn ghost sm" data-why="${esc(x.t.id)}" style="margin:0 0 6px 30px">Why is this recommended?</button></div>`).join("")}</div>`
+      : `<div class="empty">No actionable tasks match these filters.</div>`}
+  </div>
+
+  <div class="grid c2">
+    <div class="card"><h2><span class="eyebrow">Today</span></h2>${listHTML(GTDService.today(),"No commitments scheduled for today.")}</div>
+    <div class="card"><h2><span class="eyebrow">Waiting for — follow up</span></h2>${listHTML(GTDService.waitingOverdue(),"No follow-ups due.")}</div>
+    <div class="card"><h2><span class="eyebrow">Upcoming (7 days)</span></h2>${listHTML(GTDService.upcoming(7),"Nothing time-sensitive approaching.")}</div>
+    <div class="card"><h2><span class="eyebrow">Stale (${AppState.data.settings.staleTaskDays}+ days untouched)</span></h2>${listHTML(GTDService.stale().slice(0,6),"Nothing has gone stale.")}</div>
+  </div>
+
+  <div class="grouphead" style="margin-top:20px"><span class="eyebrow">Project health</span></div>
+  <div class="grid c4">
+    <div class="stat"><div class="n">${ProjectService.active().length}</div><div class="l">Active projects</div></div>
+    <div class="stat"><div class="n ok">${ProjectService.active().filter(p=>ProjectService.hasNextAction(p.id)).length}</div><div class="l">With next actions</div></div>
+    <div class="stat"><div class="n ${h.noNext?"bad":""}">${h.noNext}</div><div class="l">No next action</div></div>
+    <div class="stat"><div class="n ${h.reviewDue?"warn":""}">${h.reviewDue}</div><div class="l">Review overdue</div></div>
+  </div>`;
+};
+
+/* ---------------- INBOX ---------------- */
+UI.inbox = function(){
+  const items=TaskService.byStatus("inbox").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
+  return `
+  <div class="viewhead"><div><h1>Inbox</h1><div class="sub">Capture everything. Decide later.</div></div>
+    ${items.length?`<div class="viewactions"><button class="btn primary" data-go="clarify">Clarify ${items.length} item${items.length===1?"":"s"} →</button></div>`:""}</div>
+  <div class="card" style="margin-bottom:14px">
+    <input id="quickCapture" placeholder="What has your attention?  (Enter to capture — paste several lines to capture them all)" autocomplete="off" style="font-size:15px;padding:12px 14px">
+    <div style="margin-top:8px" class="eyebrow">Shorthand: @Email #ISO high — original text is always kept</div>
+  </div>
+  ${items.length? `<div class="card">${listHTML(items,"" ,{extraMeta:""})}</div>`
+    : `<div class="card"><div class="empty"><div class="big">Inbox zero</div>Every captured item has been clarified. Mind like water.</div></div>`}`;
+};
+
+/* ---------------- CLARIFY ---------------- */
+UI.clarify = function(){
+  const items=TaskService.byStatus("inbox").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
+  if(!items.length) return `<div class="viewhead"><div><h1>Clarify</h1></div></div>
+    <div class="card clarify-stage"><div class="empty"><div class="big">Inbox zero</div>There is nothing to clarify. Capture something first.</div>
+    <div style="text-align:center"><button class="btn" data-go="inbox">Go to Inbox</button></div></div>`;
+  if(AppState.clarifyIndex>=items.length) AppState.clarifyIndex=0;
+  const t=items[AppState.clarifyIndex];
+  const total=items.length, pos=AppState.clarifyIndex+1;
+  const projOpts=ProjectService.all().filter(p=>["active","onhold"].includes(p.status)).map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
+  const ctxOpts=AppState.data.contexts.map(c=>`<option>${esc(c)}</option>`).join("");
+  return `
+  <div class="viewhead"><div><h1>Clarify</h1><div class="sub">One item at a time · ${pos} of ${total}</div></div></div>
+  <div class="clarify-stage">
+    <div class="progressbar"><i style="width:${Math.round((pos-1)/total*100)}%"></i></div>
+    <div class="card">
+      <div class="eyebrow">Captured ${fmtDT(t.createdAt)}</div>
+      <div class="clarify-q">What is it?</div>
+      <div class="field"><input id="clTitle" value="${esc(t.title)}" aria-label="Title"></div>
+      <div class="field"><textarea id="clNotes" placeholder="Notes (optional)" aria-label="Notes">${esc(t.notes)}</textarea></div>
+
+      <div class="clarify-q">Is it actionable?</div>
+      <div class="choice-row">
+        <button class="btn danger" data-cl="trash">No — Trash</button>
+        <button class="btn" data-cl="someday">No — Someday / Maybe</button>
+        <button class="btn" data-cl="reference">No — Reference</button>
+      </div>
+
+      <div class="clarify-q">If yes — what is the next physical action?</div>
+      <p style="color:var(--muted);font-size:12.5px;margin-bottom:8px">Rewrite it as something you can physically do. Not <i>“ISO 27001”</i> — instead <i>“Email Mark to request the ISO 27001 statement of work”</i>.</p>
+      <div class="fieldrow">
+        <div class="field"><label>Context</label><select id="clCtx"><option value="">— none —</option>${ctxOpts}</select></div>
+        <div class="field"><label>Project</label><select id="clProj"><option value="">— standalone —</option>${projOpts}</select></div>
+      </div>
+      <div class="clarify-q" style="font-size:14px">Can it be done in about two minutes?</div>
+      <div class="choice-row">
+        <button class="btn primary" data-cl="donow">Do it now → mark done</button>
+        <button class="btn" data-cl="delegate">Delegate → Waiting for</button>
+        <button class="btn" data-cl="defer">Defer → Next action</button>
+        <button class="btn" data-cl="schedule">Defer → Calendar</button>
+      </div>
+      <div class="modalfoot"><div class="left"><button class="btn ghost" data-cl="skip">Skip for now</button></div>
+        <button class="btn ghost" data-cl="project">Make it a project</button></div>
+    </div>
+  </div>`;
+};
+
+/* ---------------- NEXT ACTIONS ---------------- */
+UI.next = function(){
+  const f=AppState.filters;
+  let tasks=TaskService.byStatus("next");
+  const groups={};
+  const keyFn = {
+    context: t=>t.context||"No context",
+    project: t=>t.projectId?projName(t.projectId):"Standalone",
+    area:    t=>t.areaId?areaName(t.areaId):"No area",
+    priority:t=>t.priority[0].toUpperCase()+t.priority.slice(1),
+    energy:  t=>(t.energy||"medium")+" energy",
+    due:     t=>t.dueDate?fmtDate(t.dueDate):"No due date"
+  }[f.group]|| (t=>t.context||"No context");
+  tasks.forEach(t=>{ const k=keyFn(t); (groups[k]=groups[k]||[]).push(t); });
+  const keys=Object.keys(groups).sort();
+  return `
+  <div class="viewhead"><div><h1>Next actions</h1><div class="sub">${tasks.length} actionable item${tasks.length===1?"":"s"}</div></div>
+    <div class="viewactions"><label class="eyebrow" style="align-self:center">Group by</label>
+      <select id="groupSel" style="width:auto">${["context","project","area","priority","energy","due"].map(g=>`<option value="${g}" ${f.group===g?"selected":""}>${g[0].toUpperCase()+g.slice(1)}</option>`).join("")}</select>
+      <button class="btn primary" id="newNextBtn">+ New action</button></div></div>
+  ${tasks.length? keys.map(k=>`<div class="grouphead"><span class="eyebrow">${esc(k)}</span><span class="mono" style="font-size:10px;color:var(--faint)">${groups[k].length}</span></div><div class="card" style="padding:6px 10px">${listHTML(groups[k])}</div>`).join("")
+   : `<div class="card"><div class="empty"><div class="big">No next actions</div>Clarify your Inbox or capture something new.</div></div>`}`;
+};
+
+/* ---------------- PROJECTS ---------------- */
+UI.projects = function(){
+  const ps=ProjectService.all();
+  const order={active:0,onhold:1,someday:2,completed:3,cancelled:4};
+  const sorted=[...ps].sort((a,b)=>(order[a.status]??9)-(order[b.status]??9)||a.name.localeCompare(b.name));
+  const stName={active:"Active",onhold:"On hold",someday:"Someday",completed:"Completed",cancelled:"Cancelled"};
+  return `
+  <div class="viewhead"><div><h1>Projects</h1><div class="sub">Any outcome needing more than one step</div></div>
+    <div class="viewactions"><button class="btn primary" id="newProjBtn">+ New project</button></div></div>
+  ${sorted.length? `<div class="grid c2">${sorted.map(p=>{
+    const na=ProjectService.nextActionsOf(p.id).length, prog=ProjectService.progress(p.id);
+    const revDue=p.reviewDate&&dateOf(p.reviewDate)<=dateOf(todayStr())&&p.status==="active";
+    return `<div class="projcard" data-project="${esc(p.id)}" role="button" tabindex="0">
+      <div style="display:flex;gap:8px;align-items:flex-start">
+        <div style="flex:1"><b>${esc(p.name)}</b><div style="color:var(--muted);font-size:12.5px;margin-top:2px">${esc(p.desiredOutcome||"")}</div></div>
+        ${p.status==="active"&&!na?'<span class="warnflag">NO NEXT ACTION</span>':""}
+      </div>
+      <div class="meta" style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
+        <span class="pill"><span class="dot" style="background:${p.status==="active"?"var(--ok)":p.status==="onhold"?"var(--warn)":"var(--faint)"}"></span>${stName[p.status]||p.status}</span>
+        ${p.areaId?`<span class="tag">${esc(areaName(p.areaId))}</span>`:""}
+        ${p.targetDate?`<span class="mono" style="font-size:11px;color:var(--muted)">target ${esc(fmtDate(p.targetDate))}</span>`:""}
+        ${revDue?`<span class="mono" style="font-size:11px;color:var(--warn)">review due</span>`:""}
+        <span class="mono" style="font-size:11px;color:var(--muted)">${na} next action${na===1?"":"s"}</span>
+      </div>
+      <div class="pbar"><i style="width:${prog}%"></i></div>
+    </div>`;}).join("")}</div>`
+  : `<div class="card"><div class="empty"><div class="big">No projects yet</div>Create one for any outcome that needs more than one action.</div></div>`}`;
+};
+
+UI.project = function(){
+  const p=ProjectService.get(AppState.currentProjectId);
+  if(!p) return UI.projects();
+  const tasks=ProjectService.tasksOf(p.id);
+  const open=tasks.filter(t=>!["completed","cancelled"].includes(t.status));
+  const done=tasks.filter(t=>t.status==="completed");
+  const waiting=open.filter(t=>t.status==="waiting");
+  return `
+  <div class="viewhead"><div>
+    <button class="btn ghost sm" data-go="projects">← Projects</button>
+    <h1 style="margin-top:6px">${esc(p.name)}</h1>
+    <div class="sub">${esc(p.desiredOutcome||"")}</div></div>
+    <div class="viewactions"><button class="btn" id="editProjBtn">Edit</button><button class="btn primary" id="projAddTask">+ Next action</button></div></div>
+  <div class="grid c3" style="margin-bottom:14px">
+    <div class="stat"><div class="n">${ProjectService.nextActionsOf(p.id).length}</div><div class="l">Next actions</div></div>
+    <div class="stat"><div class="n">${waiting.length}</div><div class="l">Waiting</div></div>
+    <div class="stat"><div class="n">${ProjectService.progress(p.id)}%</div><div class="l">Progress</div></div>
+  </div>
+  ${p.purpose?`<div class="card" style="margin-bottom:14px"><h2><span class="eyebrow">Purpose</span></h2><p style="font-size:13px">${esc(p.purpose)}</p></div>`:""}
+  ${p.status==="active"&&!ProjectService.hasNextAction(p.id)?`<div class="healthband attn" style="margin-bottom:14px"><span class="stateword">NO NEXT ACTION</span><span style="color:var(--muted);font-size:12.5px">Every active project should have at least one next action.</span></div>`:""}
+  <div class="card" style="margin-bottom:14px"><h2><span class="eyebrow">Open tasks</span></h2>${listHTML(open,"No open tasks.",{hideProject:true})}</div>
+  <div class="card"><h2><span class="eyebrow">Completed (${done.length})</span></h2>${listHTML(done.slice(-8),"Nothing completed yet.",{hideProject:true})}</div>
+  ${p.notes?`<div class="card" style="margin-top:14px"><h2><span class="eyebrow">Notes</span></h2><p style="font-size:13px;white-space:pre-wrap">${esc(p.notes)}</p></div>`:""}`;
+};
+
+/* ---------------- WAITING ---------------- */
+UI.waiting = function(){
+  const items=TaskService.byStatus("waiting").sort((a,b)=>(a.waitingFor?.followUpDate||"9999").localeCompare(b.waitingFor?.followUpDate||"9999"));
+  const t0=dateOf(todayStr());
+  return `
+  <div class="viewhead"><div><h1>Waiting for</h1><div class="sub">Delegated work and external dependencies</div></div>
+    <div class="viewactions"><button class="btn primary" id="newWaitBtn">+ New waiting item</button></div></div>
+  ${items.length? `<div class="card" style="padding:6px 12px"><table class="plain"><thead><tr><th>Item</th><th>Who</th><th>Delegated</th><th>Expected</th><th>Follow up</th><th></th></tr></thead><tbody>
+  ${items.map(t=>{const w=t.waitingFor||{}; const over=w.followUpDate&&dateOf(w.followUpDate)<=t0;
+    return `<tr data-task="${esc(t.id)}" style="cursor:pointer">
+      <td>${esc(t.title)}${t.projectId?`<div class="mono" style="font-size:10.5px;color:var(--faint)">▸ ${esc(projName(t.projectId))}</div>`:""}</td>
+      <td>${esc(w.person||"—")}${w.organisation?`<div class="mono" style="font-size:10.5px;color:var(--faint)">${esc(w.organisation)}</div>`:""}</td>
+      <td class="mono" style="font-size:11.5px">${esc(fmtDate(w.delegatedDate)||"—")}</td>
+      <td class="mono" style="font-size:11.5px">${esc(fmtDate(w.expectedDate)||"—")}</td>
+      <td class="mono" style="font-size:11.5px;color:${over?"var(--danger)":"var(--muted)"}">${esc(fmtDate(w.followUpDate)||"—")}${w.lastFollowUp?`<div style="color:var(--faint)">last ${esc(fmtDate(w.lastFollowUp))}</div>`:""}</td>
+      <td style="white-space:nowrap"><button class="btn sm" data-followup="${esc(t.id)}">Follow up</button> <button class="btn sm ghost" data-reactivate="${esc(t.id)}">→ Next</button></td>
+    </tr>`;}).join("")}</tbody></table></div>`
+  : `<div class="card"><div class="empty"><div class="big">Nothing outstanding</div>You are not waiting on anyone.</div></div>`}`;
+};
+
+/* ---------------- SOMEDAY ---------------- */
+UI.someday = function(){
+  const items=TaskService.byStatus("someday");
+  const byTag={};
+  items.forEach(t=>{ const k=(t.tags&&t.tags[0])||"Uncategorised"; (byTag[k]=byTag[k]||[]).push(t); });
+  return `
+  <div class="viewhead"><div><h1>Someday / Maybe</h1><div class="sub">Ideas and possible future commitments — parked, not forgotten</div></div>
+    <div class="viewactions"><button class="btn primary" id="newSomedayBtn">+ New idea</button></div></div>
+  ${items.length? Object.keys(byTag).sort().map(k=>`
+    <div class="grouphead"><span class="eyebrow">${esc(k)}</span></div>
+    <div class="card" style="padding:6px 10px"><div class="tasklist">${byTag[k].map(t=>`
+      <div class="trow" data-task="${esc(t.id)}"><span class="prio"></span>
+        <div class="body"><div class="ttl">${esc(t.title)}</div></div>
+        <button class="btn sm" data-activate="${esc(t.id)}">Activate</button>
+        <button class="btn sm ghost" data-toproject="${esc(t.id)}">→ Project</button>
+      </div>`).join("")}</div></div>`).join("")
+  : `<div class="card"><div class="empty"><div class="big">Empty</div>Capture ideas you are not committing to yet.</div></div>`}`;
+};
+
+/* ---------------- REFERENCE ---------------- */
+UI.reference = function(){
+  const items=TaskService.byStatus("reference");
+  return `
+  <div class="viewhead"><div><h1>Reference</h1><div class="sub">Non-actionable information worth keeping</div></div>
+    <div class="viewactions"><button class="btn primary" id="newRefBtn">+ New reference</button></div></div>
+  ${items.length? `<div class="grid c2">${items.map(t=>`<div class="card" data-task="${esc(t.id)}" style="cursor:pointer">
+      <b style="font-size:13.5px">${esc(t.title)}</b>
+      ${t.notes?`<p style="color:var(--muted);font-size:12.5px;margin-top:6px;white-space:pre-wrap">${esc(t.notes.length>200?t.notes.slice(0,200)+"…":t.notes)}</p>`:""}
+      <div style="margin-top:8px">${(t.tags||[]).map(x=>`<span class="tag">${esc(x)}</span>`).join(" ")} ${t.areaId?`<span class="tag">${esc(areaName(t.areaId))}</span>`:""}</div>
+    </div>`).join("")}</div>`
+  : `<div class="card"><div class="empty"><div class="big">No reference material</div>Store procedures, numbers and notes here.</div></div>`}`;
+};
+/* ---------------- CALENDAR ---------------- */
+UI.calendar = function(){
+  if(!AppState.calCursor) AppState.calCursor=new Date();
+  const cur=AppState.calCursor, mode=AppState.calMode;
+  const monthName=cur.toLocaleDateString("en-GB",{month:"long",year:"numeric"});
+  const evByDate={};
+  TaskService.all().forEach(t=>{
+    if(["completed","cancelled"].includes(t.status)) return;
+    const push=(ds,kind)=>{ if(!ds) return; (evByDate[ds]=evByDate[ds]||[]).push({t,kind}); };
+    push(t.scheduledDate,"sched"); if(t.dueDate&&t.dueDate!==t.scheduledDate) push(t.dueDate,"due");
+  });
+  const cellEvents = ds => (evByDate[ds]||[]).map(e=>`<div class="calev" data-task="${esc(e.t.id)}" title="${esc(e.t.title)}" style="${e.kind==="due"?"border-left-color:var(--danger)":""}">${e.kind==="due"?"⚑ ":""}${esc(e.t.title)}</div>`).join("");
+  let body="";
+  if(mode==="month"){
+    const y=cur.getFullYear(), m=cur.getMonth();
+    const first=new Date(y,m,1);
+    const startDow=(first.getDay()+6)%7; // Monday first
+    const start=new Date(y,m,1-startDow);
+    let cells="";
+    for(let i=0;i<42;i++){
+      const d=new Date(start); d.setDate(start.getDate()+i);
+      const ds=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+      const dim=d.getMonth()!==m, isToday=ds===todayStr();
+      cells+=`<div class="calcell ${dim?"dim":""} ${isToday?"today":""}"><div class="d">${d.getDate()}</div>${cellEvents(ds)}</div>`;
+    }
+    body=`<div class="calgrid">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>`<div class="caldow">${d}</div>`).join("")}${cells}</div>`;
+  } else if(mode==="week"){
+    const d0=new Date(cur); d0.setDate(d0.getDate()-((d0.getDay()+6)%7));
+    let cells="";
+    for(let i=0;i<7;i++){
+      const d=new Date(d0); d.setDate(d0.getDate()+i);
+      const ds=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+      cells+=`<div class="calcell ${ds===todayStr()?"today":""}" style="min-height:180px"><div class="d">${d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric"})}</div>${cellEvents(ds)}</div>`;
+    }
+    body=`<div class="calgrid" style="grid-template-columns:repeat(7,1fr)">${cells}</div>`;
+  } else { // agenda
+    const t0=new Date();
+    let rows="";
+    for(let i=0;i<21;i++){
+      const d=new Date(t0); d.setDate(t0.getDate()+i);
+      const ds=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+      const evs=evByDate[ds]||[]; if(!evs.length) continue;
+      rows+=`<div class="grouphead"><span class="eyebrow">${d.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})}</span></div>
+        <div class="card" style="padding:6px 10px">${listHTML(evs.map(e=>e.t))}</div>`;
+    }
+    body=rows||`<div class="card"><div class="empty">Nothing on the calendar in the next three weeks.</div></div>`;
+  }
+  return `
+  <div class="viewhead"><div><h1>Calendar</h1><div class="sub">Only what must happen on a given day — the hard landscape</div></div>
+    <div class="viewactions">
+      <button class="btn sm" id="calPrev" aria-label="Previous">‹</button>
+      <span class="eyebrow" style="align-self:center;min-width:130px;text-align:center">${esc(monthName)}</span>
+      <button class="btn sm" id="calNext" aria-label="Next">›</button>
+      <button class="btn sm ${mode==="month"?"primary":""}" data-calmode="month">Month</button>
+      <button class="btn sm ${mode==="week"?"primary":""}" data-calmode="week">Week</button>
+      <button class="btn sm ${mode==="agenda"?"primary":""}" data-calmode="agenda">Agenda</button>
+    </div></div>${body}`;
+};
+
+/* ---------------- REVIEW ---------------- */
+UI.review = function(){
+  const last=GTDService.lastWeeklyReview();
+  const since=GTDService.daysSinceWeekly();
+  const h=GTDService.health();
+  const active=AppState.data._activeReview||null;
+  const steps=ReviewService.weeklySteps();
+  let stepHTML="";
+  if(active){
+    stepHTML = steps.map((s,i)=>{
+      const done=active.done.includes(s.k);
+      return `<div class="revstep ${done?"done":""}">
+        <span class="num">${done?"✓":String(i+1).padStart(2,"0")}</span>
+        <div style="flex:1"><b>${esc(s.t)}</b><p>${esc(s.d)}</p></div>
+        ${s.go?`<button class="btn sm ghost" data-go="${esc(s.go)}">Open</button>`:""}
+        <button class="btn sm ${done?"":"primary"}" data-revstep="${esc(s.k)}">${done?"Undo":"Done"}</button>
+      </div>`;}).join("");
+  }
+  return `
+  <div class="viewhead"><div><h1>Review</h1><div class="sub">Reflect regularly so the system stays trustworthy</div></div></div>
+
+  <div class="grid c3" style="margin-bottom:14px">
+    <div class="stat"><div class="n ${since>7?"warn":""}">${since>500?"—":since}</div><div class="l">Days since weekly review</div></div>
+    <div class="stat"><div class="n">${last?esc(fmtDate(last.completedAt)):"Never"}</div><div class="l">Last weekly review</div></div>
+    <div class="stat"><div class="n">${esc(AppState.data.settings.weeklyReviewDay||"Friday")}</div><div class="l">Next review due (${esc(AppState.data.settings.weeklyReviewDay||"Friday")}s)</div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px"><h2><span class="eyebrow">Daily review</span></h2>
+    <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px">A five-minute scan: today's commitments, overdue items, follow-ups and the calendar.</p>
+    <div class="grid c2">
+      <div><div class="eyebrow" style="margin-bottom:4px">Overdue</div>${listHTML(GTDService.overdue().slice(0,5),"Nothing overdue.")}</div>
+      <div><div class="eyebrow" style="margin-bottom:4px">Follow-ups due</div>${listHTML(GTDService.waitingOverdue().slice(0,5),"None due.")}</div>
+    </div></div>
+
+  <div class="card"><h2><span class="eyebrow" style="color:var(--accent)">Weekly review</span></h2>
+    ${active? `${stepHTML}
+      <div class="field" style="margin-top:8px"><label>Review notes</label><textarea id="revNotes">${esc(active.notes||"")}</textarea></div>
+      <div class="modalfoot"><div class="left"><button class="btn ghost" id="revCancel">Abandon review</button></div>
+      <button class="btn primary" id="revComplete" ${active.done.length<steps.length?"disabled":""}>Complete review (${active.done.length}/${steps.length})</button></div>`
+    : `<p style="color:var(--muted);font-size:13px;margin-bottom:12px">The weekly review keeps every commitment current: get clear, get current, get creative. It usually takes 30–60 minutes.</p>
+       <div style="color:var(--muted);font-size:12.5px;margin-bottom:12px">Current gaps: ${h.inbox} inbox · ${h.noNext} project${h.noNext===1?"":"s"} without next actions · ${h.waitFollow} follow-up${h.waitFollow===1?"":"s"} due · ${h.staleCount} stale item${h.staleCount===1?"":"s"}</div>
+       <button class="btn primary" id="revStart">Start weekly review</button>`}
+  </div>
+
+  ${(AppState.data.reviews||[]).length?`<div class="card" style="margin-top:14px"><h2><span class="eyebrow">History</span></h2>
+    <table class="plain"><thead><tr><th>Completed</th><th>Duration</th><th>Items</th><th>Notes</th></tr></thead><tbody>
+    ${AppState.data.reviews.slice().reverse().slice(0,8).map(r=>`<tr><td class="mono" style="font-size:11.5px">${esc(fmtDT(r.completedAt))}</td><td class="mono" style="font-size:11.5px">${r.durationMinutes?r.durationMinutes+"m":"—"}</td><td class="mono" style="font-size:11.5px">${r.itemsProcessed??"—"}</td><td style="font-size:12.5px;color:var(--muted)">${esc(r.notes||"")}</td></tr>`).join("")}
+    </tbody></table></div>`:""}`;
+};
+
+/* ---------------- SETTINGS / DATA ---------------- */
+UI.settings = function(){
+  const m=AppState.data.metadata;
+  const modeName={live:"Connected (live file)",readonly:"Read only",cached:"Cached copy",demo:"Demo mode"}[AppState.storageMode];
+  return `
+  <div class="viewhead"><div><h1>Data &amp; settings</h1><div class="sub">Local file connection, backups and preferences</div></div></div>
+  <div class="grid c2">
+    <div class="card"><h2><span class="eyebrow">Data file</span></h2>
+      <table class="plain"><tbody>
+        <tr><td class="eyebrow" style="width:140px">Data file</td><td class="mono" style="font-size:12px">${esc(AppState.fileName||APP_CONFIG.dataSource.fileName)}</td></tr>
+        <tr><td class="eyebrow">Location</td><td style="font-size:12.5px">Local file</td></tr>
+        <tr><td class="eyebrow">Status</td><td style="font-size:12.5px">${esc(modeName)}</td></tr>
+        <tr><td class="eyebrow">Last loaded</td><td class="mono" style="font-size:12px">${esc(fmtDT(AppState.lastLoadedAt))}</td></tr>
+        <tr><td class="eyebrow">Last saved</td><td class="mono" style="font-size:12px">${esc(fmtDT(AppState.lastSavedAt))}</td></tr>
+        <tr><td class="eyebrow">Revision</td><td class="mono" style="font-size:12px">${m.revision}</td></tr>
+        <tr><td class="eyebrow">Last modified by</td><td class="mono" style="font-size:12px">${esc(m.lastModifiedBy||"—")}</td></tr>
+      </tbody></table>
+      <div class="modalfoot" style="justify-content:flex-start">
+        <button class="btn primary" id="setSaveNow">Save now</button>
+        <button class="btn" id="setReconnect">${AppState.storageMode==="live"?"Change data file":"Connect / reconnect file"}</button>
+        ${AppState.storageMode==="readonly"?'<button class="btn" id="setDownload">Save JSON</button>':""}
+      </div></div>
+    <div class="card"><h2><span class="eyebrow">Backups</span></h2>
+      <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px">A copy of your data is kept in this browser automatically as protection against failed saves or lost connections. tasks.json remains the primary source.</p>
+      <div class="modalfoot" style="justify-content:flex-start">
+        <button class="btn" id="setExport">Export backup</button>
+        <button class="btn" id="setImport">Import backup</button>
+        <button class="btn" id="setRestore">Restore local backup</button>
+      </div></div>
+    <div class="card"><h2><span class="eyebrow">Preferences</span></h2>
+      <div class="fieldrow">
+        <div class="field"><label>Weekly review day</label><select id="prefRevDay">${["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map(d=>`<option ${AppState.data.settings.weeklyReviewDay===d?"selected":""}>${d}</option>`).join("")}</select></div>
+        <div class="field"><label>Default context</label><select id="prefCtx">${AppState.data.contexts.map(c=>`<option ${AppState.data.settings.defaultContext===c?"selected":""}>${esc(c)}</option>`).join("")}</select></div>
+      </div>
+      <div class="fieldrow">
+        <div class="field"><label>Stale task threshold (days)</label><input id="prefStaleT" type="number" min="3" max="90" value="${AppState.data.settings.staleTaskDays||14}"></div>
+        <div class="field"><label>Stale project threshold (days)</label><input id="prefStaleP" type="number" min="3" max="120" value="${AppState.data.settings.staleProjectDays||21}"></div>
+      </div></div>
+    <div class="card"><h2><span class="eyebrow">Contexts &amp; areas</span></h2>
+      <div class="field"><label>Contexts (comma separated)</label><input id="prefContexts" value="${esc(AppState.data.contexts.join(", "))}"></div>
+      <div class="field"><label>Areas of responsibility (comma separated)</label><input id="prefAreas" value="${esc(AppState.data.areas.map(a=>a.name).join(", "))}"></div>
+      <button class="btn" id="prefSaveLists">Apply</button></div>
+  </div>
+  <div class="card" style="margin-top:14px"><h2><span class="eyebrow">GTD health check</span></h2>${healthTableHTML()}</div>`;
+};
+function healthTableHTML(){
+  const h=GTDService.health();
+  const row=(l,v,bad)=>`<tr><td style="font-size:12.5px">${l}</td><td class="mono" style="font-size:12px;color:${bad?"var(--danger)":"var(--muted)"};text-align:right">${v}</td></tr>`;
+  return `<div class="healthband ${h.state}" style="margin-bottom:10px"><span class="stateword">${h.word.toUpperCase()}</span></div>
+  <table class="plain"><tbody>
+    ${row("Inbox requiring clarification",h.inbox,h.inbox>4)}
+    ${row("Projects without next actions",h.noNext,h.noNext>0)}
+    ${row("Waiting items overdue for follow-up",h.waitFollow,h.waitFollow>0)}
+    ${row("Tasks overdue",h.overdue,h.overdue>0)}
+    ${row("Stale tasks",h.staleCount,h.staleCount>3)}
+    ${row("Projects overdue for review",h.reviewDue,h.reviewDue>0)}
+    ${row("Days since last weekly review",h.sinceWeekly>500?"never":h.sinceWeekly,h.sinceWeekly>7)}
+  </tbody></table>`;
+}
+
+/* ---------------- SEARCH ---------------- */
+UI.search = function(){
+  const {tasks,projects}=SearchService.run(AppState.searchQuery);
+  return `
+  <div class="viewhead"><div><h1>Search</h1><div class="sub">“${esc(AppState.searchQuery)}” — ${tasks.length} task${tasks.length===1?"":"s"}, ${projects.length} project${projects.length===1?"":"s"}</div></div></div>
+  ${projects.length?`<div class="grouphead"><span class="eyebrow">Projects</span></div><div class="grid c2">${projects.map(p=>`<div class="projcard" data-project="${esc(p.id)}"><b>${esc(p.name)}</b><div style="color:var(--muted);font-size:12.5px">${esc(p.desiredOutcome||"")}</div></div>`).join("")}</div>`:""}
+  <div class="grouphead"><span class="eyebrow">Tasks</span></div>
+  <div class="card" style="padding:6px 10px">${listHTML(tasks,"No matching tasks.",{extraMeta:""})}</div>`;
+};
+/* ============================================================
+   MODALS & DRAWERS
+   ============================================================ */
+function closeModal(){ $("#modalHost").innerHTML=""; }
+
+UI.taskDrawer = function(id){
+  const t=TaskService.get(id); if(!t) return;
+  AppState.selectedTaskId=id;
+  const ctxOpts=AppState.data.contexts.map(c=>`<option ${t.context===c?"selected":""}>${esc(c)}</option>`).join("");
+  const projOpts=ProjectService.all().map(p=>`<option value="${esc(p.id)}" ${t.projectId===p.id?"selected":""}>${esc(p.name)}</option>`).join("");
+  const areaOpts=AppState.data.areas.map(a=>`<option value="${esc(a.id)}" ${t.areaId===a.id?"selected":""}>${esc(a.name)}</option>`).join("");
+  const w=t.waitingFor||{};
+  $("#modalHost").innerHTML=`
+  <div class="overlay" data-close="1">
+  <div class="drawer" role="dialog" aria-label="Task detail" style="left:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span class="pill"><span class="dot" style="background:var(--accent)"></span>${esc(STATUS_LABEL[t.status]||t.status)}</span>
+      <button class="btn ghost sm" data-close="1" aria-label="Close">✕ Close</button></div>
+    <div class="field"><label>Title</label><input id="tdTitle" value="${esc(t.title)}"></div>
+    <div class="field"><label>Description</label><textarea id="tdDesc">${esc(t.description)}</textarea></div>
+    <div class="fieldrow">
+      <div class="field"><label>Status</label><select id="tdStatus">${Object.entries(STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${t.status===k?"selected":""}>${v}</option>`).join("")}</select></div>
+      <div class="field"><label>Context</label><select id="tdCtx"><option value="">— none —</option>${ctxOpts}</select></div>
+    </div>
+    <div class="fieldrow">
+      <div class="field"><label>Project</label><select id="tdProj"><option value="">— standalone —</option>${projOpts}</select></div>
+      <div class="field"><label>Area</label><select id="tdArea"><option value="">— none —</option>${areaOpts}</select></div>
+    </div>
+    <div class="fieldrow">
+      <div class="field"><label>Priority</label><select id="tdPrio">${["low","normal","high","critical"].map(p=>`<option ${t.priority===p?"selected":""}>${p}</option>`).join("")}</select></div>
+      <div class="field"><label>Energy</label><select id="tdEnergy">${["low","medium","high"].map(p=>`<option ${t.energy===p?"selected":""}>${p}</option>`).join("")}</select></div>
+    </div>
+    <div class="fieldrow">
+      <div class="field"><label>Estimated minutes</label><input id="tdEst" type="number" min="1" value="${t.estimatedMinutes??""}"></div>
+      <div class="field"><label>Tags (comma separated)</label><input id="tdTags" value="${esc((t.tags||[]).join(", "))}"></div>
+    </div>
+    <div class="fieldrow">
+      <div class="field"><label>Due date</label><input id="tdDue" type="date" value="${esc(t.dueDate||"")}"></div>
+      <div class="field"><label>Scheduled date</label><input id="tdSched" type="date" value="${esc(t.scheduledDate||"")}"></div>
+    </div>
+    <div class="grouphead"><span class="eyebrow">Waiting for</span></div>
+    <div class="fieldrow">
+      <div class="field"><label>Person</label><input id="tdWPerson" value="${esc(w.person||"")}"></div>
+      <div class="field"><label>Organisation</label><input id="tdWOrg" value="${esc(w.organisation||"")}"></div>
+    </div>
+    <div class="fieldrow">
+      <div class="field"><label>Expected date</label><input id="tdWExp" type="date" value="${esc(w.expectedDate||"")}"></div>
+      <div class="field"><label>Follow-up date</label><input id="tdWFol" type="date" value="${esc(w.followUpDate||"")}"></div>
+    </div>
+    <div class="field"><label>Notes</label><textarea id="tdNotes">${esc(t.notes)}</textarea></div>
+    <div class="grouphead"><span class="eyebrow">Subtasks</span></div>
+    <div id="tdSubs">${(t.subtasks||[]).map((s,i)=>`<div class="trow" style="cursor:default"><button class="chk ${s.done?"":""}" data-subtoggle="${i}" style="${s.done?"background:var(--ok);border-color:var(--ok)":""}"></button><div class="body"><div class="ttl" style="${s.done?"text-decoration:line-through;color:var(--muted)":""}">${esc(s.title)}</div></div><button class="btn ghost sm" data-subdel="${i}">✕</button></div>`).join("")}</div>
+    <input id="tdNewSub" placeholder="Add subtask and press Enter" style="margin-top:6px">
+    <div class="mono" style="font-size:10.5px;color:var(--faint);margin-top:12px">Created ${esc(fmtDT(t.createdAt))} · Updated ${esc(fmtDT(t.updatedAt))}${t.completedAt?" · Completed "+esc(fmtDT(t.completedAt)):""}</div>
+    <div class="modalfoot">
+      <div class="left"><button class="btn danger sm" id="tdDelete">Delete</button>
+      <button class="btn sm" id="tdConvert">Convert to project</button></div>
+      <button class="btn sm ${t.status==="completed"?"":"primary"}" id="tdComplete">${t.status==="completed"?"Reopen":"Complete"}</button>
+      <button class="btn primary sm" id="tdSave">Save</button>
+    </div>
+  </div></div>`;
+  const save=()=>{
+    const wf={person:$("#tdWPerson").value.trim(),organisation:$("#tdWOrg").value.trim(),expectedDate:$("#tdWExp").value||null,followUpDate:$("#tdWFol").value||null,delegatedDate:w.delegatedDate||null,lastFollowUp:w.lastFollowUp||null};
+    const hasW=wf.person||wf.organisation||wf.expectedDate||wf.followUpDate;
+    TaskService.update(id,{
+      title:$("#tdTitle").value.trim()||t.title, description:$("#tdDesc").value,
+      status:$("#tdStatus").value, context:$("#tdCtx").value||null,
+      projectId:$("#tdProj").value||null, areaId:$("#tdArea").value||null,
+      priority:$("#tdPrio").value, energy:$("#tdEnergy").value,
+      estimatedMinutes:$("#tdEst").value?parseInt($("#tdEst").value,10):null,
+      tags:$("#tdTags").value.split(",").map(s=>s.trim()).filter(Boolean),
+      dueDate:$("#tdDue").value||null, scheduledDate:$("#tdSched").value||null,
+      notes:$("#tdNotes").value, clarified:$("#tdStatus").value!=="inbox",
+      waitingFor: hasW? (wf.delegatedDate?wf:Object.assign(wf,{delegatedDate:todayStr()})) : null
+    });
+  };
+  $("#tdSave").onclick=()=>{save(); closeModal(); render(); toast("Saved","ok");};
+  $("#tdComplete").onclick=()=>{save(); if(TaskService.get(id).status==="completed"){TaskService.update(id,{status:"next",completedAt:null});}else{TaskService.complete(id);} closeModal(); render();};
+  $("#tdDelete").onclick=()=>{closeModal(); TaskService.remove(id); render();};
+  $("#tdConvert").onclick=()=>{
+    save(); const tt=TaskService.get(id);
+    const p=ProjectService.create({name:tt.title,desiredOutcome:tt.title,areaId:tt.areaId,notes:tt.notes});
+    TaskService.remove(id); closeModal();
+    AppState.currentProjectId=p.id; go("project"); toast("Converted to project — now define its first next action","ok");
+  };
+  $("#tdNewSub").addEventListener("keydown",e=>{
+    if(e.key==="Enter"&&e.target.value.trim()){
+      t.subtasks=t.subtasks||[]; t.subtasks.push({title:e.target.value.trim(),done:false});
+      markDirty(); UI.taskDrawer(id);
+    }});
+  $$("#tdSubs [data-subtoggle]").forEach(b=>b.onclick=()=>{const i=+b.dataset.subtoggle; t.subtasks[i].done=!t.subtasks[i].done; markDirty(); UI.taskDrawer(id);});
+  $$("#tdSubs [data-subdel]").forEach(b=>b.onclick=()=>{t.subtasks.splice(+b.dataset.subdel,1); markDirty(); UI.taskDrawer(id);});
+};
+
+UI.projectModal = function(id){
+  const p=id?ProjectService.get(id):null;
+  const areaOpts=AppState.data.areas.map(a=>`<option value="${esc(a.id)}" ${p?.areaId===a.id?"selected":""}>${esc(a.name)}</option>`).join("");
+  $("#modalHost").innerHTML=`
+  <div class="overlay" data-close="1"><div class="modal" role="dialog" aria-label="Project">
+    <h2>${p?"Edit project":"New project"}</h2>
+    <div class="field"><label>Project name</label><input id="pmName" value="${esc(p?.name||"")}" placeholder="e.g. Achieve ISO 27001 certification"></div>
+    <div class="field"><label>Desired outcome — what does done look like?</label><input id="pmOutcome" value="${esc(p?.desiredOutcome||"")}"></div>
+    <div class="field"><label>Purpose — why does it matter?</label><input id="pmPurpose" value="${esc(p?.purpose||"")}"></div>
+    <div class="fieldrow">
+      <div class="field"><label>Status</label><select id="pmStatus">${[["active","Active"],["onhold","On hold"],["someday","Someday"],["completed","Completed"],["cancelled","Cancelled"]].map(([k,v])=>`<option value="${k}" ${p?.status===k?"selected":""}>${v}</option>`).join("")}</select></div>
+      <div class="field"><label>Area</label><select id="pmArea"><option value="">— none —</option>${areaOpts}</select></div>
+    </div>
+    <div class="fieldrow">
+      <div class="field"><label>Owner</label><input id="pmOwner" value="${esc(p?.owner||"")}"></div>
+      <div class="field"><label>Review date</label><input id="pmReview" type="date" value="${esc(p?.reviewDate||"")}"></div>
+    </div>
+    <div class="fieldrow">
+      <div class="field"><label>Start date</label><input id="pmStart" type="date" value="${esc(p?.startDate||"")}"></div>
+      <div class="field"><label>Target date</label><input id="pmTarget" type="date" value="${esc(p?.targetDate||"")}"></div>
+    </div>
+    <div class="field"><label>Notes</label><textarea id="pmNotes">${esc(p?.notes||"")}</textarea></div>
+    <div class="modalfoot">
+      ${p?'<div class="left"><button class="btn danger sm" id="pmDelete">Delete project</button></div>':""}
+      <button class="btn" data-close="1">Cancel</button>
+      <button class="btn primary" id="pmSave">${p?"Save":"Create project"}</button>
+    </div>
+  </div></div>`;
+  $("#pmSave").onclick=()=>{
+    const fields={name:$("#pmName").value.trim(),desiredOutcome:$("#pmOutcome").value.trim(),purpose:$("#pmPurpose").value.trim(),status:$("#pmStatus").value,areaId:$("#pmArea").value||null,owner:$("#pmOwner").value.trim(),reviewDate:$("#pmReview").value||null,startDate:$("#pmStart").value||null,targetDate:$("#pmTarget").value||null,notes:$("#pmNotes").value};
+    if(!fields.name){ toast("A project needs a name","warn"); return; }
+    if(p) ProjectService.update(p.id,fields); else { const np=ProjectService.create(fields); AppState.currentProjectId=np.id; AppState.currentView="project"; }
+    closeModal(); render();
+  };
+  if(p) $("#pmDelete").onclick=()=>{closeModal(); ProjectService.remove(p.id); go("projects");};
+  $("#pmName").focus();
+};
+
+UI.captureModal = function(preset){
+  $("#modalHost").innerHTML=`
+  <div class="overlay" data-close="1"><div class="modal" role="dialog" aria-label="Capture" style="max-width:560px">
+    <h2>Capture</h2>
+    <textarea id="cmText" placeholder="What has your attention? One item per line.&#10;Shorthand: Email Mark about ISO SOW @Email #ISO high" style="min-height:110px;font-size:14.5px" autofocus></textarea>
+    <div class="modalfoot"><span class="eyebrow" style="margin-right:auto;align-self:center">Ctrl+Enter to capture</span>
+      <button class="btn" data-close="1">Cancel</button><button class="btn primary" id="cmGo">Capture</button></div>
+  </div></div>`;
+  const doIt=()=>{
+    const v=$("#cmText").value; if(!v.trim()){closeModal(); return;}
+    const created=TaskService.captureLines(v);
+    if(preset) created.forEach(t=>TaskService.update(t.id,preset));
+    closeModal(); render();
+    toast(created.length+" item"+(created.length===1?"":"s")+" captured","ok");
+  };
+  $("#cmGo").onclick=doIt;
+  $("#cmText").addEventListener("keydown",e=>{ if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)) doIt(); });
+  $("#cmText").focus();
+};
+
+UI.conflictDialog = function(diskRev, pendingText){
+  AppState.dirty=true; setSaveStatus("File conflict","err");
+  $("#modalHost").innerHTML=`
+  <div class="overlay"><div class="modal" role="alertdialog" aria-label="File conflict">
+    <h2>A newer version of the file appears to exist</h2>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:14px">tasks.json has changed on disk since it was loaded here (disk revision ${esc(String(diskRev))}, this session loaded revision ${AppState.loadedRevision}). Saving now would overwrite those changes.</p>
+    <div class="modalfoot" style="justify-content:flex-start;flex-wrap:wrap">
+      <button class="btn primary" id="cfReload">Reload file</button>
+      <button class="btn" id="cfBackup">Save current version as backup</button>
+      <button class="btn danger" id="cfOverwrite">Overwrite anyway</button>
+    </div>
+  </div></div>`;
+  $("#cfReload").onclick=async()=>{
+    try{
+      const {text,lastModified,name}=await FileService.read(AppState.fileHandle);
+      const obj=JSON.parse(text);
+      if(validateData(obj).length){ toast("The file on disk contains invalid data","err"); return; }
+      DataProvider.fileLastModified=lastModified; DataProvider.adopt(obj,"live",name);
+      closeModal(); render(); toast("Reloaded from disk","ok"); setSaveStatus("Loaded revision "+obj.metadata.revision,"ok");
+    }catch(e){ toast("Unable to reload the file","err"); }
+  };
+  $("#cfBackup").onclick=()=>{ downloadJSON(AppState.data,"gtd-backup-"+backupStamp()+".json"); toast("Backup of this session exported","ok"); };
+  $("#cfOverwrite").onclick=async()=>{
+    try{
+      AppState.data.metadata.revision=(AppState.data.metadata.revision||0)+1;
+      await FileService.write(AppState.fileHandle, JSON.stringify(AppState.data,null,2));
+      const f=await AppState.fileHandle.getFile(); DataProvider.fileLastModified=f.lastModified;
+      AppState.dirty=false; AppState.lastSavedAt=nowISO(); AppState.loadedRevision=AppState.data.metadata.revision;
+      closeModal(); setSaveStatus("Saved to "+(AppState.fileName||"tasks.json"),"ok");
+    }catch(e){ toast("The file could not be saved","err"); }
+  };
+};
+function backupStamp(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"-"+p(d.getHours())+p(d.getMinutes()); }
+
+/* ============================================================
+   COMMAND PALETTE
+   ============================================================ */
+function paletteCommands(){
+  return [
+    {n:"Capture new item",k:"C",fn:()=>UI.captureModal()},
+    {n:"Go to Focus",fn:()=>go("focus")},
+    {n:"Go to Inbox",fn:()=>go("inbox")},
+    {n:"Go to Clarify",fn:()=>go("clarify")},
+    {n:"Go to Next actions",fn:()=>go("next")},
+    {n:"Go to Projects",fn:()=>go("projects")},
+    {n:"Go to Waiting for",fn:()=>go("waiting")},
+    {n:"Go to Calendar",fn:()=>go("calendar")},
+    {n:"Go to Someday / Maybe",fn:()=>go("someday")},
+    {n:"Go to Reference",fn:()=>go("reference")},
+    {n:"Start weekly review",fn:()=>{startWeeklyReview(); go("review");}},
+    {n:"Search",k:"/",fn:()=>$("#globalSearch").focus()},
+    {n:"Save now",k:"Ctrl+S",fn:()=>DataProvider.save(true)},
+    {n:"Connect data file",fn:()=>DataProvider.reconnect()},
+    {n:"Import JSON backup",fn:()=>{$("#fileInput").dataset.purpose="import"; $("#fileInput").click();}},
+    {n:"Export backup",fn:()=>{downloadJSON(AppState.data,"gtd-backup-"+backupStamp()+".json"); toast("Backup exported","ok");}},
+    {n:"Toggle theme",fn:toggleTheme}
+  ];
+}
+function openPalette(){
+  const cmds=paletteCommands();
+  $("#modalHost").innerHTML=`<div class="overlay" id="palette" data-close="1"><div class="modal" role="dialog" aria-label="Command palette">
+    <input id="paletteInput" placeholder="Type a command…" autocomplete="off"><div id="paletteList"></div></div></div>`;
+  let sel=0, filtered=cmds;
+  const renderList=()=>{ $("#paletteList").innerHTML=filtered.map((c,i)=>`<div class="palitem ${i===sel?"sel":""}" data-i="${i}">${esc(c.n)}${c.k?`<span class="k">${esc(c.k)}</span>`:""}</div>`).join("")||`<div class="empty">No matching command</div>`;
+    $$("#paletteList .palitem").forEach(el=>el.onclick=()=>{closeModal(); filtered[+el.dataset.i].fn();}); };
+  renderList();
+  const inp=$("#paletteInput"); inp.focus();
+  inp.addEventListener("input",()=>{ const q=inp.value.toLowerCase(); filtered=cmds.filter(c=>c.n.toLowerCase().includes(q)); sel=0; renderList(); });
+  inp.addEventListener("keydown",e=>{
+    if(e.key==="ArrowDown"){sel=Math.min(sel+1,filtered.length-1); renderList(); e.preventDefault();}
+    else if(e.key==="ArrowUp"){sel=Math.max(sel-1,0); renderList(); e.preventDefault();}
+    else if(e.key==="Enter"&&filtered[sel]){closeModal(); filtered[sel].fn();}
+    else if(e.key==="Escape") closeModal();
+  });
+}
+/* ============================================================
+   ROUTER & RENDER
+   ============================================================ */
+const Router = { go };
+function go(view){
+  AppState.currentView=view;
+  if(view!=="search") AppState.searchQuery="";
+  render();
+  $("#view").scrollTop=0;
+}
+function render(){
+  if(!AppState.data) return;
+  const v=AppState.currentView;
+  const fn=UI[v]||UI.focus;
+  $("#view").innerHTML=fn();
+  // Nav highlighting + counts
+  $$(".navbtn").forEach(b=>b.classList.toggle("active", b.dataset.view===v || (v==="project"&&b.dataset.view==="projects")));
+  const setCnt=(id,n,hot)=>{const el=$(id); if(!el) return; el.textContent=n||""; el.classList.toggle("hot",!!hot); el.style.display=n?"":"none";};
+  const h=GTDService.health();
+  setCnt("#cntInbox",TaskService.byStatus("inbox").length, h.inbox>4);
+  setCnt("#cntClarify",TaskService.byStatus("inbox").length,false);
+  setCnt("#cntNext",TaskService.byStatus("next").length);
+  setCnt("#cntProjects",ProjectService.active().length, h.noNext>0);
+  setCnt("#cntWaiting",TaskService.byStatus("waiting").length, h.waitFollow>0);
+  setCnt("#cntSomeday",TaskService.byStatus("someday").length);
+  setCnt("#cntReview", h.sinceWeekly>7 ? "!" : "", h.sinceWeekly>7);
+  updateModePill();
+  bindView();
+}
+
+/* View-specific bindings after each render */
+function bindView(){
+  const v=AppState.currentView;
+  // shared: open task drawer / project card
+  $$("#view [data-task]").forEach(el=>el.addEventListener("click",e=>{
+    if(e.target.closest("[data-complete],[data-followup],[data-reactivate],[data-activate],[data-toproject],button.btn")) return;
+    UI.taskDrawer(el.dataset.task);
+  }));
+  $$("#view [data-complete]").forEach(b=>b.addEventListener("click",e=>{
+    e.stopPropagation();
+    const t=TaskService.get(b.dataset.complete);
+    if(t.status==="completed") TaskService.update(t.id,{status:"next",completedAt:null});
+    else TaskService.complete(t.id);
+    render();
+  }));
+  $$("#view [data-project]").forEach(el=>el.addEventListener("click",()=>{AppState.currentProjectId=el.dataset.project; go("project");}));
+  $$("#view [data-project]").forEach(el=>el.addEventListener("keydown",e=>{if(e.key==="Enter"){AppState.currentProjectId=el.dataset.project; go("project");}}));
+  $$("#view [data-go]").forEach(b=>b.addEventListener("click",()=>go(b.dataset.go)));
+
+  if(v==="focus"){
+    const F=AppState.filters;
+    const wire=(id,key)=>{const el=$(id); if(el) el.onchange=()=>{F[key]=el.value; render();};};
+    wire("#fCtx","context"); wire("#fTime","time"); wire("#fEnergy","energy"); wire("#fPrio","priority");
+    $$("#view [data-why]").forEach(b=>b.onclick=()=>$("#why_"+CSS.escape(b.dataset.why)).classList.toggle("hidden"));
+  }
+  if(v==="inbox"){
+    const qc=$("#quickCapture");
+    qc.focus();
+    qc.addEventListener("keydown",e=>{
+      if(e.key==="Enter"&&qc.value.trim()){ TaskService.create(TaskService.parseQuick(qc.value.trim())); qc.value=""; render(); $("#quickCapture").focus(); }
+    });
+    qc.addEventListener("paste",e=>{
+      const txt=(e.clipboardData||window.clipboardData).getData("text");
+      if(txt&&txt.includes("\n")){ e.preventDefault(); const n=TaskService.captureLines(txt).length; render(); toast(n+" items captured from paste","ok"); }
+    });
+  }
+  if(v==="clarify"){
+    const items=TaskService.byStatus("inbox").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
+    const t=items[AppState.clarifyIndex]; if(!t) return;
+    const grab=()=>({title:$("#clTitle").value.trim()||t.title, notes:$("#clNotes").value, context:$("#clCtx").value||null, projectId:$("#clProj").value||null, clarified:true});
+    $$("#view [data-cl]").forEach(b=>b.addEventListener("click",()=>{
+      const act=b.dataset.cl;
+      if(act==="skip"){ AppState.clarifyIndex++; render(); return; }
+      const base=grab();
+      if(act==="trash"){ TaskService.remove(t.id); }
+      else if(act==="someday"){ TaskService.update(t.id,Object.assign(base,{status:"someday"})); toast("Moved to Someday / Maybe","ok"); }
+      else if(act==="reference"){ TaskService.update(t.id,Object.assign(base,{status:"reference"})); toast("Filed as reference","ok"); }
+      else if(act==="donow"){ TaskService.update(t.id,Object.assign(base,{status:"completed",completedAt:nowISO()})); toast("Done — nice","ok"); }
+      else if(act==="delegate"){
+        TaskService.update(t.id,Object.assign(base,{status:"waiting"})); render(); UI.taskDrawer(t.id); return;
+      }
+      else if(act==="defer"){ TaskService.update(t.id,Object.assign(base,{status:"next",context:base.context||AppState.data.settings.defaultContext})); toast("Moved to Next actions","ok"); }
+      else if(act==="schedule"){ TaskService.update(t.id,Object.assign(base,{status:"scheduled"})); render(); UI.taskDrawer(t.id); return; }
+      else if(act==="project"){
+        const p=ProjectService.create({name:base.title,desiredOutcome:base.title,notes:base.notes});
+        TaskService.remove(t.id); AppState.currentProjectId=p.id; go("project"); toast("Project created — define its first next action","ok"); return;
+      }
+      render();
+    }));
+  }
+  if(v==="next"){
+    const g=$("#groupSel"); if(g) g.onchange=()=>{AppState.filters.group=g.value; render();};
+    const nb=$("#newNextBtn"); if(nb) nb.onclick=()=>UI.captureModal({status:"next",clarified:true,context:AppState.data.settings.defaultContext});
+  }
+  if(v==="projects"){ const b=$("#newProjBtn"); if(b) b.onclick=()=>UI.projectModal(null); }
+  if(v==="project"){
+    const e=$("#editProjBtn"); if(e) e.onclick=()=>UI.projectModal(AppState.currentProjectId);
+    const a=$("#projAddTask"); if(a) a.onclick=()=>UI.captureModal({status:"next",clarified:true,projectId:AppState.currentProjectId});
+  }
+  if(v==="waiting"){
+    const nb=$("#newWaitBtn"); if(nb) nb.onclick=()=>UI.captureModal({status:"waiting",clarified:true});
+    $$("#view [data-followup]").forEach(b=>b.addEventListener("click",e=>{
+      e.stopPropagation();
+      const t=TaskService.get(b.dataset.followup); const w=t.waitingFor||{};
+      const next=new Date(); next.setDate(next.getDate()+3);
+      w.lastFollowUp=todayStr(); w.followUpDate=next.getFullYear()+"-"+String(next.getMonth()+1).padStart(2,"0")+"-"+String(next.getDate()).padStart(2,"0");
+      TaskService.update(t.id,{waitingFor:w}); render(); toast("Follow-up recorded — next chase in 3 days","ok");
+    }));
+    $$("#view [data-reactivate]").forEach(b=>b.addEventListener("click",e=>{
+      e.stopPropagation(); TaskService.update(b.dataset.reactivate,{status:"next"}); render(); toast("Converted back to a next action","ok");
+    }));
+  }
+  if(v==="someday"){
+    const nb=$("#newSomedayBtn"); if(nb) nb.onclick=()=>UI.captureModal({status:"someday",clarified:true});
+    $$("#view [data-activate]").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation(); TaskService.update(b.dataset.activate,{status:"next"}); render(); toast("Activated","ok");}));
+    $$("#view [data-toproject]").forEach(b=>b.addEventListener("click",e=>{
+      e.stopPropagation(); const t=TaskService.get(b.dataset.toproject);
+      const p=ProjectService.create({name:t.title,desiredOutcome:t.title,areaId:t.areaId,notes:t.notes});
+      TaskService.remove(t.id); AppState.currentProjectId=p.id; go("project");
+    }));
+  }
+  if(v==="reference"){ const nb=$("#newRefBtn"); if(nb) nb.onclick=()=>UI.captureModal({status:"reference",clarified:true}); }
+  if(v==="calendar"){
+    $$("#view [data-calmode]").forEach(b=>b.onclick=()=>{AppState.calMode=b.dataset.calmode; render();});
+    const step = AppState.calMode==="week"?7:AppState.calMode==="month"?0:0;
+    $("#calPrev").onclick=()=>{ const c=AppState.calCursor; if(AppState.calMode==="month") c.setMonth(c.getMonth()-1); else c.setDate(c.getDate()-(step||30)); render(); };
+    $("#calNext").onclick=()=>{ const c=AppState.calCursor; if(AppState.calMode==="month") c.setMonth(c.getMonth()+1); else c.setDate(c.getDate()+(step||30)); render(); };
+  }
+  if(v==="review"){
+    const s=$("#revStart"); if(s) s.onclick=()=>{startWeeklyReview(); render();};
+    $$("#view [data-revstep]").forEach(b=>b.onclick=()=>{
+      const ar=AppState.data._activeReview; const k=b.dataset.revstep;
+      const i=ar.done.indexOf(k); if(i>=0) ar.done.splice(i,1); else ar.done.push(k);
+      const n=$("#revNotes"); if(n) ar.notes=n.value;
+      render();
+    });
+    const n=$("#revNotes"); if(n) n.addEventListener("input",()=>{AppState.data._activeReview.notes=n.value;});
+    const c=$("#revComplete"); if(c) c.onclick=()=>{
+      const ar=AppState.data._activeReview;
+      const mins=Math.max(1,Math.round((Date.now()-new Date(ar.startedAt))/60000));
+      AppState.data.reviews.push({id:uid("rev"),type:"weekly",startedAt:ar.startedAt,completedAt:nowISO(),durationMinutes:mins,notes:ar.notes||"",itemsProcessed:ar.done.length});
+      delete AppState.data._activeReview; markDirty(); render(); toast("Weekly review complete — well done","ok");
+    };
+    const x=$("#revCancel"); if(x) x.onclick=()=>{delete AppState.data._activeReview; render();};
+  }
+  if(v==="settings"){
+    $("#setSaveNow").onclick=()=>DataProvider.save(true);
+    $("#setReconnect").onclick=()=>DataProvider.reconnect();
+    const dl=$("#setDownload"); if(dl) dl.onclick=()=>DataProvider.save(true);
+    $("#setExport").onclick=()=>{downloadJSON(AppState.data,"gtd-backup-"+backupStamp()+".json"); toast("Backup exported","ok");};
+    $("#setImport").onclick=()=>{$("#fileInput").dataset.purpose="import"; $("#fileInput").click();};
+    $("#setRestore").onclick=async()=>{
+      const p=await BackupService.loadLocal();
+      if(!p){ toast("No local backup found in this browser","warn"); return; }
+      if(validateData(p.data).length){ toast("The local backup contains invalid data","err"); return; }
+      DataProvider.adopt(p.data, AppState.fileHandle?"live":"cached", AppState.fileName);
+      AppState.dirty=true; markDirty(); render();
+      toast("Local backup from "+fmtDT(p.savedAt)+" restored","ok");
+    };
+    const wirePref=(id,fn)=>{const el=$(id); if(el) el.onchange=()=>{fn(el.value); markDirty(); render();};};
+    wirePref("#prefRevDay",vv=>AppState.data.settings.weeklyReviewDay=vv);
+    wirePref("#prefCtx",vv=>AppState.data.settings.defaultContext=vv);
+    wirePref("#prefStaleT",vv=>AppState.data.settings.staleTaskDays=Math.max(3,parseInt(vv,10)||14));
+    wirePref("#prefStaleP",vv=>AppState.data.settings.staleProjectDays=Math.max(3,parseInt(vv,10)||21));
+    $("#prefSaveLists").onclick=()=>{
+      const ctxs=$("#prefContexts").value.split(",").map(s=>s.trim()).filter(Boolean).map(c=>c.startsWith("@")?c:"@"+c);
+      if(ctxs.length) AppState.data.contexts=ctxs;
+      const names=$("#prefAreas").value.split(",").map(s=>s.trim()).filter(Boolean);
+      const existing=AppState.data.areas;
+      AppState.data.areas=names.map(n=>existing.find(a=>a.name===n)||{id:uid("area"),name:n});
+      markDirty(); render(); toast("Contexts and areas updated","ok");
+    };
+  }
+}
+function startWeeklyReview(){
+  if(!AppState.data._activeReview) AppState.data._activeReview={startedAt:nowISO(),done:[],notes:""};
+}
+
+/* ============================================================
+   GLOBAL EVENTS & INIT
+   ============================================================ */
+function toggleTheme(){
+  const cur=document.documentElement.dataset.theme==="light"?"dark":"light";
+  document.documentElement.dataset.theme=cur;
+  try{ localStorage.setItem(APP_CONFIG.themeKey,cur); }catch(e){}
+}
+function enterApp(){
+  $("#setup").classList.add("hidden");
+  $("#app").classList.add("ready");
+  updateModePill();
+  setSaveStatus(AppState.storageMode==="live"?"Loaded revision "+AppState.loadedRevision:"","ok");
+  render();
+}
+
+document.addEventListener("DOMContentLoaded", async ()=>{
+  // Theme
+  try{ const th=localStorage.getItem(APP_CONFIG.themeKey); if(th) document.documentElement.dataset.theme=th; }catch(e){}
+  $("#brandName").textContent=APP_CONFIG.appName;
+  $("#setupTitle").textContent=APP_CONFIG.appName;
+  $("#setupSubtitle").textContent=APP_CONFIG.appSubtitle;
+
+  // Setup buttons
+  $("#setupConnect").onclick=()=>DataProvider.connectExisting();
+  $("#setupCreate").onclick=()=>DataProvider.createNew();
+  $("#setupImport").onclick=()=>{$("#fileInput").dataset.purpose="setup-import"; $("#fileInput").click();};
+  $("#setupDemo").onclick=()=>{DataProvider.adopt(demoData(),"demo",null); enterApp(); toast("Demo mode — connect a tasks.json file to keep your data","warn");};
+
+  // Hidden file input (fallback + import)
+  $("#fileInput").addEventListener("change", async e=>{
+    const f=e.target.files[0]; e.target.value=""; if(!f) return;
+    let obj; try{ obj=JSON.parse(await f.text()); }catch(err){ toast("That file is not valid JSON","err"); return; }
+    // Accept either raw data or an exported backup payload
+    if(obj && obj.data && obj.savedAt && !obj.tasks) obj=obj.data;
+    const errs=validateData(obj);
+    if(errs.length){ toast("The JSON file contains invalid data: "+errs[0],"err"); return; }
+    const purpose=$("#fileInput").dataset.purpose;
+    DataProvider.adopt(obj, "readonly", f.name);
+    if(purpose==="import"||purpose==="setup-import") toast("Backup imported — running read-only; use Save JSON or connect a live file","ok");
+    else toast("Loaded "+f.name+" read-only — use Save JSON to keep changes, or use a browser that supports direct file access","warn");
+    if(!$("#app").classList.contains("ready")) enterApp(); else render();
+  });
+
+  // Topbar
+  $("#saveNowBtn").onclick=()=>DataProvider.save(true);
+  $("#themeBtn").onclick=toggleTheme;
+  $("#captureBtn").onclick=()=>UI.captureModal();
+  $$("nav .navbtn,[id=mobilenav] .navbtn").forEach(b=>{ if(b.dataset.view) b.addEventListener("click",()=>go(b.dataset.view)); });
+
+  // Search
+  const gs=$("#globalSearch");
+  gs.addEventListener("input",debounce(()=>{
+    AppState.searchQuery=gs.value;
+    if(gs.value.trim()){ AppState.currentView="search"; render(); }
+    else if(AppState.currentView==="search") go("focus");
+  },250));
+
+  // Modal close on overlay / esc
+  $("#modalHost").addEventListener("click",e=>{ if(e.target.dataset.close) closeModal(); });
+  document.addEventListener("keydown",e=>{
+    const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||"");
+    if(e.key==="Escape"){ closeModal(); return; }
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="s"){ e.preventDefault(); if(AppState.data) DataProvider.save(true); return; }
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){ e.preventDefault(); if(AppState.data) openPalette(); return; }
+    if(typing) return;
+    if(e.key==="c"||e.key==="C"){ if(AppState.data){ e.preventDefault(); UI.captureModal(); } }
+    if(e.key==="/"){ e.preventDefault(); gs.focus(); }
+  });
+
+  // Warn before leaving with unsaved changes
+  window.addEventListener("beforeunload",e=>{ if(AppState.dirty&&AppState.storageMode!=="demo"){ e.preventDefault(); e.returnValue=""; } });
+
+  // Try automatic reconnection / same-folder fetch
+  const connected = await DataProvider.initialise();
+  if(connected){ enterApp(); }
+  else{
+    // Offer local backup restore on setup screen if one exists
+    const p=await BackupService.loadLocal();
+    if(p&&!validateData(p.data).length){
+      $("#setupRestore").classList.remove("hidden");
+      $("#setupRestoreBtn").onclick=()=>{ DataProvider.adopt(p.data,"cached",APP_CONFIG.dataSource.fileName); AppState.dirty=true; enterApp(); toast("Local backup restored — reconnect tasks.json to save to file","warn"); };
+    }
+  }
+});
+</script>
+</body>
+</html>
