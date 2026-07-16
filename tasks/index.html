@@ -23,7 +23,8 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh}
-.wrap{max-width:680px;margin:0 auto;padding:14px 14px 92px}
+.wrap{max-width:680px;margin:0 auto;padding:14px 14px 40px}
+body.inapp .wrap{padding-top:calc(66px + env(safe-area-inset-top,0px))}
 .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
 h1{font-size:19px;font-weight:650;margin:2px 0}
 .sub{color:var(--muted);font-size:12.5px}
@@ -53,10 +54,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
 .notes{color:var(--muted);font-size:13px;white-space:pre-wrap;margin-bottom:7px}
 .comment{background:var(--panel2);border-radius:7px;padding:7px 10px;font-size:12.5px;margin-top:6px}
 .comment .who{font-family:var(--mono);font-size:10px;color:var(--faint)}
-.tabs{position:fixed;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid var(--line);display:flex;z-index:5}
-.tabs button{flex:1;background:none;border:none;color:var(--muted);padding:12px 0 max(12px,env(safe-area-inset-bottom));font-size:10.5px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
-.tabs button.on{color:var(--accent)}
-.tabs .n{display:block;font-size:15px;margin-bottom:2px}
+.tabs{position:fixed;top:0;left:0;right:0;background:var(--panel);border-bottom:1px solid var(--line);display:flex;z-index:5;padding-top:env(safe-area-inset-top,0px)}
+.tabs button{flex:1;background:none;border:none;color:var(--muted);padding:11px 0;font-size:10.5px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;cursor:pointer;border-bottom:2px solid transparent}
+.tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+.tabs .n{display:block;font-size:14px;margin-bottom:1px}
 .bal{font-size:25px;font-weight:650;font-family:var(--mono);margin-top:4px}
 .bal.neg{color:var(--danger)}
 .tx{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
@@ -102,10 +103,11 @@ details.newtask summary::-webkit-details-marker{display:none}
 }
 /* desktop layout: tabs across the top, wider workspace, two-column sections */
 @media(min-width:861px){
-  .tabs{top:0;bottom:auto;border-top:none;border-bottom:1px solid var(--line);justify-content:center;gap:6px}
+  .tabs{justify-content:center;gap:6px}
   .tabs button{flex:0 0 auto;padding:13px 22px;font-size:11px}
   .tabs .n{display:none}
-  .wrap{max-width:980px;padding:70px 20px 40px}
+  .wrap{max-width:980px}
+  body.inapp .wrap{padding-top:76px}
   .desk2{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
   .desk2>.card{margin-top:12px}
   .calcell{min-height:92px;font-size:12px}
@@ -144,7 +146,7 @@ details.newtask summary::-webkit-details-marker{display:none}
 
 <div id="modalHost"></div>
 <div class="tabs hidden" id="tabs">
-  <button data-tab="inbox" class="on"><span class="n">▤</span>Inbox</button>
+  <button data-tab="inbox" class="on"><span class="n">▤</span>Home</button>
   <button data-tab="mine"><span class="n">✓</span>My tasks</button>
   <button data-tab="calendar"><span class="n">▦</span>Calendar</button>
   <button data-tab="money"><span class="n">$</span>Money</button>
@@ -225,7 +227,7 @@ const categories=()=>[...new Set(myTasks().map(t=>t.category).filter(Boolean))].
 
 function renderApp(){
   $("#whoLine").textContent="Signed in as "+Cloud.me().email;
-  $("#viewTitle").textContent={inbox:"Inbox",mine:"My tasks",calendar:"Calendar",money:"Money"}[TAB];
+  $("#viewTitle").textContent={inbox:"Home",mine:"My tasks",calendar:"Calendar",money:"Money"}[TAB];
   $$(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.tab===TAB));
   const c=$("#content");
   if(TAB==="inbox")c.innerHTML=inboxHTML();
@@ -236,10 +238,30 @@ function renderApp(){
 }
 
 /* ---------- INBOX (tasks sent to me) ---------- */
+function dashHTML(){
+  const open=ALL.filter(t=>!isClosed(t));
+  const tStr=todayStr();
+  const overdue=open.filter(t=>t.due_date&&t.due_date<tStr).sort((a,b)=>a.due_date.localeCompare(b.due_date));
+  const today=open.filter(t=>t.due_date===tStr);
+  const newIn=inboxTasks().filter(t=>["sent","seen"].includes(t.status));
+  if(!overdue.length&&!today.length&&!newIn.length)
+    return `<div class="card" style="border-left:3px solid var(--ok)"><div class="eyebrow" style="color:var(--ok)">All clear</div><div class="sub" style="margin-top:4px">Nothing overdue and nothing due today.</div></div>`;
+  const line=t=>`<div class="tx" style="cursor:pointer" data-goto="${esc(t.id)}"><div>${esc(t.title)}<div class="meta">${t.owner_id!==Cloud.me().id?"from "+esc(t.owner?.display_name||t.owner?.email||""):esc(t.category||"your task")}</div></div><div class="amt ${t.due_date&&t.due_date<tStr?"spend":""}">${t.due_date?esc(fmtD(t.due_date)):""}</div></div>`;
+  return `<div class="card" style="border-left:3px solid ${overdue.length?"var(--danger)":"var(--accent)"}">
+    <div class="row" style="gap:14px">
+      <div><div class="eyebrow" style="color:${overdue.length?"var(--danger)":"var(--muted)"}">Overdue</div><div class="bal ${overdue.length?"neg":""}" style="font-size:21px">${overdue.length}</div></div>
+      <div><div class="eyebrow">Due today</div><div class="bal" style="font-size:21px">${today.length}</div></div>
+      <div><div class="eyebrow">New in inbox</div><div class="bal" style="font-size:21px">${newIn.length}</div></div>
+    </div>
+    ${overdue.length?`<div class="grouphead"><span class="eyebrow" style="color:var(--danger)">Overdue</span></div>${overdue.slice(0,6).map(line).join("")}`:""}
+    ${today.length?`<div class="grouphead"><span class="eyebrow">Due today</span></div>${today.map(line).join("")}`:""}
+  </div>`;
+}
 function inboxHTML(){
   const items=inboxTasks();
   const open=items.filter(t=>!isClosed(t)), closed=items.filter(isClosed);
-  return (items.length?"":`<div class="card"><div class="empty">Nothing in your inbox yet. Tasks other people send you will appear here.</div></div>`)
+  return dashHTML()
+    +(items.length?"":`<div class="card"><div class="empty">Nothing in your inbox yet. Tasks other people send you will appear here.</div></div>`)
     +(open.length?`<div class="card">${open.map(t=>taskHTML(t,false)).join("")}</div>`:"")
     +(closed.length?`<div class="grouphead"><span class="eyebrow">Completed</span></div><div class="card" style="opacity:.75">${closed.map(t=>taskHTML(t,false)).join("")}</div>`:"");
 }
@@ -450,6 +472,13 @@ function bind(){
   const cn=$("#calNext"); if(cn)cn.onclick=()=>{CALM.m++;if(CALM.m>11){CALM.m=0;CALM.y++;}renderApp();};
   $$("#content .calcell").forEach(c=>c.onclick=()=>{CALSEL=CALSEL===c.dataset.day?null:c.dataset.day;renderApp();});
   $$("#content [data-goday]").forEach(r=>r.onclick=()=>{const d=r.dataset.goday;CALM={y:+d.slice(0,4),m:+d.slice(5,7)-1};CALSEL=d;renderApp();});
+  $$("#content [data-goto]").forEach(r=>r.onclick=()=>{
+    const t=ALL.find(x=>x.id===r.dataset.goto); if(!t) return;
+    TAB=(t.owner_id===Cloud.me().id&&t.assignee_id===Cloud.me().id)?"mine":"inbox";
+    renderApp();
+    const el=document.querySelector(`.task[data-id="${t.id}"]`);
+    if(el){if(el.scrollIntoView)el.scrollIntoView({behavior:"smooth",block:"center"});el.style.borderLeftColor="var(--accent)";}
+  });
   $$("#content [data-receipt]").forEach(a=>a.onclick=async(e)=>{e.preventDefault();try{window.open(await Cloud.signedUrl(a.dataset.receipt),"_blank");}catch(err){toast(err.message);}});
   const sv=$("#spSave"); if(sv)sv.onclick=recordSpend;
 }
@@ -481,6 +510,7 @@ function show(signedIn){
   $("#authView").classList.toggle("hidden",signedIn);
   $("#appView").classList.toggle("hidden",!signedIn);
   $("#tabs").classList.toggle("hidden",!signedIn);
+  document.body.classList.toggle("inapp",signedIn);
 }
 
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});

@@ -1,5 +1,5 @@
 /* GTD Command Centre service worker */
-const CACHE = 'tasksapp-v3';
+const CACHE = 'tasksapp-v4';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {

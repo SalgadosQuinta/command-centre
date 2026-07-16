@@ -215,11 +215,12 @@ main#view{overflow-y:auto;padding:22px 26px 60px;background:var(--bg)}
 /* ---- responsive ---- */
 #mobilenav{display:none}
 @media(max-width:860px){
-  #app.ready{grid-template-columns:1fr;grid-template-rows:auto 1fr calc(56px + env(safe-area-inset-bottom,0px))}
+  #app.ready{grid-template-columns:1fr;grid-template-rows:auto auto 1fr}
   nav.rail{display:none}
-  #mobilenav{display:flex;grid-row:3;border-top:1px solid var(--line);background:var(--bg2);justify-content:space-around;align-items:stretch;padding-bottom:env(safe-area-inset-bottom,0px)}
-  #mobilenav .navbtn{flex:1;flex-direction:column;justify-content:center;gap:2px;font-size:9.5px;padding:7px 2px;width:auto;border-radius:0}
-  #mobilenav .navbtn.active{color:var(--accent);background:none}
+  #mobilenav{display:flex;grid-row:2;border-bottom:1px solid var(--line);background:var(--bg2);justify-content:space-around;align-items:stretch}
+  #mobilenav .navbtn{flex:1;flex-direction:column;justify-content:center;gap:2px;font-size:9.5px;padding:8px 2px;width:auto;border-radius:0;border-bottom:2px solid transparent}
+  #mobilenav .navbtn.active{color:var(--accent);background:none;border-bottom-color:var(--accent)}
+  main#view{grid-row:3}
   main#view{padding:14px 12px 24px}
   .drawer{width:100%;border-left:none;padding:16px 14px calc(20px + env(safe-area-inset-bottom,0px))}
   #globalSearch{max-width:none;min-width:0;flex:1}
@@ -961,6 +962,7 @@ UI.focus = function(){
     <span class="stateword">${h.word.toUpperCase()}</span>
     <span style="color:var(--muted);font-size:12.5px">${h.inbox} in inbox · ${h.overdue} overdue · ${h.noNext} project${h.noNext===1?"":"s"} without a next action · last weekly review ${h.sinceWeekly>500?"never":h.sinceWeekly+" day"+(h.sinceWeekly===1?"":"s")+" ago"}</span>
   </div>
+  ${CloudService.signedIn()?`<div id="focusMoney"></div>`:""}
 
   <div class="card" style="margin-bottom:14px">
     <h2><span class="eyebrow" style="color:var(--accent)">Best next actions</span></h2>
@@ -1814,8 +1816,30 @@ function render(){
 }
 
 /* View-specific bindings after each render */
+function fillFocusMoney(){
+  const slot=$("#focusMoney"); if(!slot||!CloudService.signedIn()) return;
+  CloudService.ledger().then(rows=>{
+    if(!$("#focusMoney")) return; // view changed meanwhile
+    if(!rows.length){ $("#focusMoney").innerHTML=""; return; }
+    const bal=CloudService.balances(rows);
+    const fmt=n=>{const v=Math.round(n*100)/100; return (v<0?"−":"")+Math.abs(v).toFixed(2);};
+    const chips=[];
+    Object.keys(bal).forEach(person=>Object.keys(bal[person]).forEach(cur=>{
+      const v=bal[person][cur];
+      chips.push(`<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px">
+        <span>${esc(person)}</span>
+        <span class="mono" style="font-size:12px;color:${v<0?"var(--danger)":"var(--muted)"}">${esc(cur)} ${fmt(v)}${v<0?" · you owe":" · float held"}</span></div>`);
+    }));
+    $("#focusMoney").innerHTML=`<div class="card" style="margin-bottom:16px">
+      <h2 style="display:flex;justify-content:space-between;align-items:center"><span class="eyebrow">Money</span>
+      <button class="btn sm" id="focusLedgerBtn">Open ledger</button></h2>
+      <div>${chips.join("")}</div></div>`;
+    const b=$("#focusLedgerBtn"); if(b) b.onclick=openLedgerModal;
+  }).catch(()=>{ const s=$("#focusMoney"); if(s) s.innerHTML=""; });
+}
 function bindView(){
   const v=AppState.currentView;
+  if(v==="focus") fillFocusMoney();
   // shared: open task drawer / project card
   $$("#view [data-task]").forEach(el=>el.addEventListener("click",e=>{
     if(e.target.closest("[data-complete],[data-followup],[data-reactivate],[data-activate],[data-toproject],button.btn")) return;
