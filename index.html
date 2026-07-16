@@ -2034,8 +2034,17 @@ function money(cur,n){ const v=Math.round(n*100)/100; return esc(cur)+" "+(v<0?"
 function sumsHTML(s,emptyText){ const ks=Object.keys(s); return ks.length?ks.map(c=>`<div style="font-size:20px;font-weight:650;font-family:var(--mono)">${money(c,s[c])}</div>`).join(""):`<div style="font-size:20px;font-weight:650;font-family:var(--mono);color:var(--faint)">${emptyText||"—"}</div>`; }
 
 async function sha256(str){
-  const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+  if(crypto&&crypto.subtle){
+    const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+  }
+  // Fallback for non-secure contexts (e.g. file://): FNV-1a, prefixed so hashes never collide across schemes
+  let h1=0x811c9dc5;
+  for(let i=0;i<str.length;i++){ h1^=str.charCodeAt(i); h1=Math.imul(h1,0x01000193)>>>0; }
+  let h2=0x811c9dc5;
+  const rev=str.split("").reverse().join("")+"gtd";
+  for(let i=0;i<rev.length;i++){ h2^=rev.charCodeAt(i); h2=Math.imul(h2,0x01000193)>>>0; }
+  return "fnv:"+h1.toString(16).padStart(8,"0")+h2.toString(16).padStart(8,"0");
 }
 function financeLocked(){ return !!AppState.data.settings.financePin && !AppState.financeUnlocked; }
 function openPinSetup(){
