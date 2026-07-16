@@ -672,6 +672,7 @@ const DataProvider = {
     const text = JSON.stringify(d,null,2);
     // Always keep the browser backup current (but never let demo data overwrite real data)
     if(AppState.storageMode!=="demo") await BackupService.saveLocal(d);
+    CloudSync.schedulePush();
     if(AppState.storageMode==="live" && AppState.fileHandle){
       try{
         // Conflict protection: has the file changed underneath us?
@@ -980,6 +981,24 @@ function coachHTML(hh){
     </div>`).join("")}
     </div></div>`;
 }
+function focusFinanceHTML(){
+  const f=AppState.data&&AppState.data.finance;
+  if(!f||(!f.income.length&&!f.outgoings.length)) return "";
+  if(financeLocked()) return `<div class="card" style="margin-bottom:16px"><h2 style="display:flex;justify-content:space-between;align-items:center"><span class="eyebrow">Finance</span><button class="btn sm" data-go="finance">Unlock</button></h2><div class="sub">Locked — open Finance to view</div></div>`;
+  const tStr=todayStr();
+  const in30=FinanceService.expectedIn(30), out30=FinanceService.committedOut(30);
+  const overdueOut=f.outgoings.filter(x=>!x.paid&&x.dueDate<tStr);
+  const lateIn=f.income.filter(x=>x.status!=="received"&&x.expectedDate<tStr);
+  const cell=(label,sums,neg)=>`<div><div class="eyebrow">${label}</div>${Object.keys(sums).length?Object.keys(sums).map(c=>`<div class="mono" style="font-size:16px;font-weight:650;color:${neg?"var(--danger)":"var(--text)"}">${money(c,sums[c])}</div>`).join(""):`<div class="mono" style="font-size:16px;color:var(--faint)">—</div>`}</div>`;
+  return `<div class="card" style="margin-bottom:16px">
+    <h2 style="display:flex;justify-content:space-between;align-items:center"><span class="eyebrow">Finance — next 30 days</span><button class="btn sm" data-go="finance">Open</button></h2>
+    <div class="grid c3" style="margin-top:4px">${cell("Expected in",in30,false)}${cell("Committed out",out30,true)}
+      <div><div class="eyebrow">Attention</div>
+        ${overdueOut.length?`<div class="mono" style="font-size:12px;color:var(--danger)">${overdueOut.length} payment${overdueOut.length===1?"":"s"} overdue</div>`:""}
+        ${lateIn.length?`<div class="mono" style="font-size:12px;color:var(--warn)">${lateIn.length} receipt${lateIn.length===1?"":"s"} late</div>`:""}
+        ${!overdueOut.length&&!lateIn.length?`<div class="mono" style="font-size:12px;color:var(--ok)">all on schedule</div>`:""}
+      </div></div></div>`;
+}
 UI.focus = function(){
   const h=GTDService.health();
   const f=AppState.filters;
@@ -994,6 +1013,7 @@ UI.focus = function(){
     <span style="color:var(--muted);font-size:12.5px">${h.inbox} in inbox · ${h.overdue} overdue · ${h.noNext} project${h.noNext===1?"":"s"} without a next action · last weekly review ${h.sinceWeekly>500?"never":h.sinceWeekly+" day"+(h.sinceWeekly===1?"":"s")+" ago"}</span>
   </div>
   ${coachHTML(h)}
+  ${focusFinanceHTML()}
   ${CloudService.signedIn()?`<div id="focusMoney"></div>`:""}
 
   <div class="card" style="margin-bottom:14px">
@@ -1290,6 +1310,29 @@ UI.calendar = function(){
 };
 
 /* ---------------- REVIEW ---------------- */
+function digestHTML(){
+  const tStr=todayStr(); const weekAgo=addDays(tStr,-7);
+  const tasks=TaskService.all();
+  const done7=tasks.filter(t=>t.status==="completed"&&(t.completedAt||"").slice(0,10)>=weekAgo);
+  const created7=tasks.filter(t=>(t.createdAt||"").slice(0,10)>=weekAgo);
+  const h2=GTDService.health();
+  const f=AppState.data.finance;
+  const finBit=(f&&(f.income.length||f.outgoings.length)&&!financeLocked())
+    ?(()=>{const i=FinanceService.expectedIn(30),o=FinanceService.committedOut(30);
+      const fm=s=>Object.keys(s).map(c=>money(c,s[c])).join(" · ")||"—";
+      return " · expecting "+fm(i)+" in / "+fm(o)+" out over 30 days";})():"";
+  return `<div class="card" style="margin-bottom:16px;border-left:3px solid var(--accent)">
+    <h2><span class="eyebrow">This week at a glance</span></h2>
+    <div style="font-size:13px;color:var(--muted);line-height:1.7">
+      <b style="color:var(--text)">${done7.length}</b> completed and <b style="color:var(--text)">${created7.length}</b> captured in the last 7 days ·
+      <b style="color:${h2.overdue?"var(--danger)":"var(--text)"}">${h2.overdue}</b> overdue ·
+      <b style="color:var(--text)">${TaskService.byStatus("waiting").length}</b> waiting on others ·
+      <b style="color:${h2.noNext?"var(--warn)":"var(--text)"}">${h2.noNext}</b> project${h2.noNext===1?"":"s"} without a next action${esc(finBit)}
+    </div>
+    ${done7.length?`<div class="grouphead"><span class="eyebrow">Completed this week</span></div>
+      <div style="opacity:.75">${done7.slice(0,8).map(t=>`<div style="padding:4px 0;font-size:12.5px;color:var(--faint)">✓ ${esc(t.title)}</div>`).join("")}${done7.length>8?`<div class="mono" style="font-size:10.5px;color:var(--faint)">…and ${done7.length-8} more</div>`:""}</div>`:""}
+  </div>`;
+}
 UI.review = function(){
   const last=GTDService.lastWeeklyReview();
   const since=GTDService.daysSinceWeekly();
@@ -1309,6 +1352,7 @@ UI.review = function(){
   }
   return `
   <div class="viewhead"><div><h1>Review</h1><div class="sub">Reflect regularly so the system stays trustworthy</div></div></div>
+  ${digestHTML()}
 
   <div class="grid c3" style="margin-bottom:14px">
     <div class="stat"><div class="n ${since>7?"warn":""}">${since>500?"—":since}</div><div class="l">Days since weekly review</div></div>
@@ -1554,6 +1598,75 @@ function renderSmartResults(out){
     toast(n?n+" task"+(n===1?"":"s")+" added":"Nothing selected",n?"ok":"warn");
   };
 }
+const FXService = {
+  rates:null, base:"USD",
+  async load(){
+    if(this.rates) return this.rates;
+    try{
+      const cached=JSON.parse(localStorage.getItem("gtdcc-fx")||"null");
+      if(cached && Date.now()-cached.at<24*3600*1000){ this.rates=cached.rates; return this.rates; }
+    }catch(e){}
+    try{
+      const r=await fetch("https://api.frankfurter.app/latest?base=USD");
+      const d=await r.json();
+      if(d&&d.rates){ this.rates=d.rates; this.rates.USD=1; localStorage.setItem("gtdcc-fx",JSON.stringify({at:Date.now(),rates:this.rates})); }
+    }catch(e){}
+    return this.rates;
+  },
+  toUSD(cur,amount){
+    if(cur==="USD") return amount;
+    if(!this.rates||!this.rates[cur]) return null; // e.g. ZWG not in ECB feed
+    return amount/this.rates[cur];
+  },
+  approxUSD(sums){ // {CUR:amount} -> {usd, excluded:[]}
+    if(!this.rates) return null;
+    let usd=0; const excluded=[];
+    Object.keys(sums).forEach(c=>{ const v=this.toUSD(c,sums[c]); if(v===null) excluded.push(c); else usd+=v; });
+    return {usd, excluded};
+  },
+  approxHTML(sums){
+    const a=this.approxUSD(sums);
+    if(!a||Object.keys(sums).length<2&&sums.USD!==undefined) return "";
+    return `<div class="mono" style="font-size:10.5px;color:var(--faint);margin-top:3px">≈ USD ${(a.usd<0?"−":"")+Math.abs(a.usd).toFixed(0)} indicative${a.excluded.length?" · excl. "+a.excluded.join(", "):""}</div>`;
+  }
+};
+const CloudSync = {
+  pushTimer:null,
+  enabled(){ return CloudService.signedIn() && AppState.storageMode!=="demo"; },
+  schedulePush(){ if(!this.enabled()) return; clearTimeout(this.pushTimer); this.pushTimer=setTimeout(()=>this.push(),4000); },
+  async push(){
+    if(!this.enabled()) return false;
+    try{
+      await CloudService.api("user_state?on_conflict=user_id",{method:"POST",
+        headers:{Prefer:"resolution=merge-duplicates,return=minimal"},
+        body:{user_id:CloudService.me().id,data:AppState.data,revision:AppState.data.metadata.revision||0,updated_at:nowISO()}});
+      AppState.cloudSyncedAt=nowISO();
+      return true;
+    }catch(e){
+      if(String(e.message).includes("user_state")) console.warn("Cloud sync: run migration 004");
+      return false;
+    }
+  },
+  async pull(){
+    if(!CloudService.signedIn()) return null;
+    try{
+      const rows=await CloudService.api(`user_state?user_id=eq.${CloudService.me().id}&select=data,revision,updated_at`);
+      return rows&&rows[0]?rows[0]:null;
+    }catch(e){ return null; }
+  },
+  async adoptNewerIfAny(){
+    const row=await this.pull();
+    if(!row||!row.data) return false;
+    const localRev=(AppState.data&&AppState.data.metadata&&AppState.data.metadata.revision)||0;
+    if((row.revision||0)>localRev && !validateData(row.data).length){
+      DataProvider.adopt(row.data, AppState.storageMode==="live"?"live":"cached", APP_CONFIG.dataSource.fileName);
+      AppState.data.metadata.revision=Math.max(row.revision||0, AppState.data.metadata.revision||0);
+      AppState.dirty=true; scheduleSave();
+      return true;
+    }
+    return false;
+  }
+};
 let ACTIVE_REC=null;
 function voiceToggle(btn,target){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -1583,6 +1696,7 @@ function cloudCardHTML(){
       <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px">Signed in as <b>${esc(CloudService.me().email)}</b>. You can delegate tasks to other people from the task drawer, track them under Waiting for, and manage floats and spending below.</p>
       <div class="modalfoot" style="justify-content:flex-start">
         <button class="btn" id="cloudSync">Sync now</button>
+        <button class="btn" id="cloudSyncData">Sync data now</button>
         <button class="btn" id="cloudMoney">Money ledger</button>
         <button class="btn ghost" id="cloudOut">Sign out</button>
       </div>
@@ -1621,12 +1735,24 @@ async function openLedgerModal(){
       </div>
       <h2 style="margin-top:6px"><span class="eyebrow">Recent entries</span></h2>
       <div style="max-height:200px;overflow:auto">${rows.length?`<table class="plain"><tbody>
-        ${rows.slice(0,30).map(r=>`<tr><td class="mono" style="font-size:11px;white-space:nowrap">${esc(fmtDate(r.created_at.slice(0,10)))}</td><td style="font-size:12px">${esc((r.person&&(r.person.display_name||r.person.email))||"")}</td><td style="font-size:12px">${r.type==="float"?"Float":"Spend"}${r.description?" — "+esc(r.description):""}${r.receipt_path?` <a href="#" data-receipt="${esc(r.receipt_path)}" style="color:var(--accent)">receipt</a>`:""}</td><td class="mono" style="text-align:right;font-size:12px;color:${r.type==="spend"?"var(--danger)":"var(--muted)"}">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</td></tr>`).join("")}
+        ${rows.slice(0,30).map(r=>`<tr><td class="mono" style="font-size:11px;white-space:nowrap">${esc(fmtDate(r.created_at.slice(0,10)))}</td><td style="font-size:12px">${esc((r.person&&(r.person.display_name||r.person.email))||"")}</td><td style="font-size:12px">${r.type==="float"?"Float":"Spend"}${r.description?" — "+esc(r.description):""}${r.receipt_path?` <a href="#" data-receipt="${esc(r.receipt_path)}" style="color:var(--accent)">receipt</a>`:""}${r.correction_of?` <span class="mono" style="font-size:9.5px;color:var(--faint)">CORRECTION</span>`:` <a href="#" data-correct="${esc(r.id)}" style="color:var(--faint);font-size:10.5px" title="Add a counter-entry that reverses this">correct</a>`}</td><td class="mono" style="text-align:right;font-size:12px;color:${r.type==="spend"?"var(--danger)":"var(--muted)"}">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</td></tr>`).join("")}
       </tbody></table>`:""}</div>
       <div class="modalfoot"><button class="btn" id="flClose">Close</button><button class="btn primary" id="flGive" ${others.length?"":"disabled"}>Record float</button></div>
     </div></div>`;
     $("#flClose").onclick=closeModal;
     $$("#modalHost [data-receipt]").forEach(a=>a.onclick=async(e)=>{e.preventDefault(); try{ const u=await CloudService.receiptUrl(a.dataset.receipt); window.open(u,"_blank"); }catch(err){ toast(err.message,"warn"); }});
+    $$("#modalHost [data-correct]").forEach(a=>a.onclick=async(e)=>{
+      e.preventDefault();
+      const r=rows.find(x=>x.id===a.dataset.correct); if(!r) return;
+      if(!confirm(`Reverse this ${r.type} of ${r.currency} ${parseFloat(r.amount).toFixed(2)} with a counter-entry?`)) return;
+      try{
+        await CloudService.api("transactions",{method:"POST",prefer:"return=minimal",body:{
+          ledger_owner_id:r.ledger_owner_id||CloudService.me().id, person_id:r.person_id,
+          type:r.type==="float"?"spend":"float", amount:r.amount, currency:r.currency,
+          description:"Correction of: "+(r.description||r.type), correction_of:r.id, created_by:CloudService.me().id}});
+        toast("Correction recorded","ok"); openLedgerModal();
+      }catch(err){ toast(err.message,"warn"); }
+    });
     $("#flGive").onclick=async()=>{
       const amt=parseFloat($("#flAmount").value);
       if(!amt||amt<=0){ toast("Enter a valid amount","warn"); return; }
@@ -1787,6 +1913,7 @@ async function fillPeople(){
       <div class="grid c3" style="margin-bottom:14px">
         <div class="card"><div class="eyebrow">Floats out</div>
           ${Object.keys(tot).length?Object.keys(tot).map(c=>`<div style="font-size:22px;font-weight:650;font-family:var(--mono);color:${tot[c]<0?"var(--danger)":"var(--text)"}">${esc(c)} ${fmt(tot[c])}</div>`).join(""):`<div style="font-size:22px;font-weight:650;font-family:var(--mono)">—</div>`}
+          ${FXService.approxHTML(tot)}
           <div class="sub">net position across everyone</div></div>
         <div class="card"><div class="eyebrow">Open delegated tasks</div>
           <div style="font-size:22px;font-weight:650;font-family:var(--mono);color:${overdueCloud.length?"var(--danger)":"var(--text)"}">${openCloudAll.length}</div>
@@ -2106,9 +2233,9 @@ UI.finance = function(){
   <div class="viewhead"><div><h1>Finance</h1><div class="sub">Revenue you're driving towards, and what's committed to go out</div></div>
     <div class="viewactions"><button class="btn ghost" id="finPin" title="Protect this view with a 4-digit PIN">${AppState.data.settings.financePin?"🔒 PIN":"Set PIN"}</button><button class="btn" id="finAddOut">+ Payment to make</button><button class="btn primary" id="finAddInc">+ Expected revenue</button></div></div>
   <div class="grid c4" style="margin-bottom:16px">
-    <div class="card"><div class="eyebrow">Expected in — 30 days</div>${sumsHTML(in30,"nothing yet")}</div>
-    <div class="card"><div class="eyebrow">Expected in — 60 days</div>${sumsHTML(in60,"nothing yet")}</div>
-    <div class="card"><div class="eyebrow">Committed out — 30 days</div>${sumsHTML(out30,"nothing")}</div>
+    <div class="card"><div class="eyebrow">Expected in — 30 days</div>${sumsHTML(in30,"nothing yet")}${FXService.approxHTML(in30)}</div>
+    <div class="card"><div class="eyebrow">Expected in — 60 days</div>${sumsHTML(in60,"nothing yet")}${FXService.approxHTML(in60)}</div>
+    <div class="card"><div class="eyebrow">Committed out — 30 days</div>${sumsHTML(out30,"nothing")}${FXService.approxHTML(out30)}</div>
     <div class="card"><div class="eyebrow">Net — 30 days</div>${(()=>{const ks=Object.keys(net);return ks.length?ks.map(c=>`<div style="font-size:20px;font-weight:650;font-family:var(--mono);color:${net[c]<0?"var(--danger)":"var(--ok)"}">${money(c,net[c])}</div>`).join(""):`<div style="font-size:20px;font-weight:650;font-family:var(--mono);color:var(--faint)">—</div>`;})()}</div>
   </div>
   <div class="grid c2">
@@ -2733,6 +2860,12 @@ function bindView(){
     };
     const cOut=$("#cloudOut"); if(cOut) cOut.onclick=()=>{ CloudService.signOut(); toast("Signed out","ok"); render(); };
     const cSync=$("#cloudSync"); if(cSync) cSync.onclick=async()=>{ try{ const n=await CloudService.pull(); toast(n?n+" update"+(n===1?"":"s")+" from cloud":"Up to date","ok"); render(); }catch(err){ toast(err.message,"warn"); } };
+    const cSD=$("#cloudSyncData"); if(cSD) cSD.onclick=async()=>{
+      const adopted=await CloudSync.adoptNewerIfAny();
+      if(adopted){ render(); toast("Newer data pulled from cloud","ok"); return; }
+      const ok=await CloudSync.push();
+      toast(ok?"Your data is synced to the cloud":"Sync failed — run migration 004 in Supabase","ok");
+    };
     const cMon=$("#cloudMoney"); if(cMon) cMon.onclick=openLedgerModal;
     const aiS=$("#aiRulesSave"); if(aiS) aiS.onclick=()=>{ AppState.data.settings.aiRules=$("#aiRules").value; markDirty(); toast("Rules saved","ok"); };
     $("#setReconnect").onclick=()=>DataProvider.reconnect();
@@ -2857,11 +2990,15 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   window.addEventListener("beforeunload",e=>{ if(AppState.dirty&&AppState.storageMode!=="demo"){ e.preventDefault(); e.returnValue=""; } });
 
   // Try automatic reconnection / same-folder fetch
+  FXService.load();
   const connected = await DataProvider.initialise();
   if(connected){
     enterApp();
     if(CloudService.signedIn()){
-      CloudService.pull().then(n=>{ if(n){ render(); toast(n+" update"+(n===1?"":"s")+" from cloud","ok"); } }).catch(()=>{});
+      CloudSync.adoptNewerIfAny().then(adopted=>{
+        if(adopted){ render(); toast("Newer data pulled from cloud sync","ok"); }
+        CloudService.pull().then(n=>{ if(n){ render(); toast(n+" update"+(n===1?"":"s")+" from cloud","ok"); } }).catch(()=>{});
+      });
     }
   }
   else{
