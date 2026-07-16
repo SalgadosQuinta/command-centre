@@ -1004,7 +1004,7 @@ UI.inbox = function(){
   const items=TaskService.byStatus("inbox").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   return `
   <div class="viewhead"><div><h1>Inbox</h1><div class="sub">Capture everything. Decide later.</div></div>
-    ${items.length?`<div class="viewactions"><button class="btn primary" data-go="clarify">Clarify ${items.length} item${items.length===1?"":"s"} →</button></div>`:""}</div>
+    ${items.length?`<div class="viewactions">${CloudService.signedIn()?`<button class="btn" id="smartBtn">✨ Smart capture</button>`:""}<button class="btn primary" data-go="clarify">Clarify ${items.length} item${items.length===1?"":"s"} →</button></div>`:""}</div>
   <div class="card" style="margin-bottom:14px">
     <input id="quickCapture" placeholder="What has your attention?  (Enter to capture — paste several lines to capture them all)" autocomplete="off" style="font-size:15px;padding:12px 14px">
     <div style="margin-top:8px" class="eyebrow">Shorthand: @Email #ISO high — original text is always kept</div>
@@ -1403,6 +1403,118 @@ const CloudService = {
 };
 CloudService.load();
 
+const SmartCapture = {
+  async analyse(text, images){
+    const body={
+      text: text||null,
+      images: images||[],
+      rules: AppState.data.settings.aiRules||"",
+      contexts: AppState.data.contexts,
+      projects: ProjectService.all().filter(p=>p.status!=="completed").map(p=>p.name),
+      areas: AppState.data.areas.map(a=>a.name),
+      people: [...new Set(TaskService.all().map(t=>t.waitingFor?.person).filter(Boolean))],
+      today: todayStr()
+    };
+    const r=await fetch(`${CLOUD.url}/functions/v1/smart-capture`,{
+      method:"POST",
+      headers:{apikey:CLOUD.key,Authorization:"Bearer "+CloudService.session.access_token,"Content-Type":"application/json"},
+      body:JSON.stringify(body)
+    });
+    let d=null; try{ d=await r.json(); }catch(e){}
+    if(r.status===401){ if(await CloudService.refresh()) return this.analyse(text,images); throw new Error("Please sign in again in Data & settings"); }
+    if(r.status===404) throw new Error("The smart-capture function is not deployed in Supabase yet");
+    if(!r.ok||!d||d.error) throw new Error((d&&d.error)||"Smart capture failed");
+    return d;
+  }
+};
+function fileToImage(f){
+  return new Promise((res,rej)=>{
+    if(!/^image\//.test(f.type)){ rej(new Error(f.name+" is not an image")); return; }
+    if(f.size>4.5*1024*1024){ rej(new Error(f.name+" is too large (max ~4.5 MB)")); return; }
+    const r=new FileReader();
+    r.onload=()=>res({media_type:f.type,data:String(r.result).split(",")[1]});
+    r.onerror=()=>rej(new Error("Could not read "+f.name));
+    r.readAsDataURL(f);
+  });
+}
+function openSmartCapture(){
+  if(!CloudService.signedIn()){ toast("Sign in first — Data & settings → Cloud","warn"); go("settings"); return; }
+  $("#modalHost").innerHTML=`<div class="overlay" id="ovSmart"><div class="modal" style="max-width:680px">
+    <h2><span class="eyebrow">✨ Smart capture</span></h2>
+    <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px">Paste an email, WhatsApp message or notes — or attach screenshots — and the tasks, dates and people will be extracted for your review.</p>
+    <div class="field"><label>Pasted text</label><textarea id="scText" rows="7" placeholder="Paste the email or message here…"></textarea></div>
+    <div class="field"><label>Screenshots (up to 4)</label><input id="scImgs" type="file" accept="image/*" multiple></div>
+    <div id="scStatus" class="mono" style="font-size:11.5px;color:var(--muted);min-height:16px"></div>
+    <div id="scResults"></div>
+    <div class="modalfoot">
+      <button class="btn" id="scCancel">Close</button>
+      <button class="btn primary" id="scGo">Analyse</button>
+    </div>
+  </div></div>`;
+  $("#scCancel").onclick=closeModal;
+  $("#ovSmart").addEventListener("click",e=>{ if(e.target.id==="ovSmart") closeModal(); });
+  $("#scGo").onclick=async()=>{
+    const text=$("#scText").value.trim();
+    const files=Array.from($("#scImgs").files||[]);
+    if(!text&&!files.length){ toast("Paste some text or attach a screenshot","warn"); return; }
+    const btn=$("#scGo"); btn.disabled=true; $("#scStatus").textContent="Reading"+(files.length?" screenshots and":"")+" analysing…";
+    try{
+      const images=[];
+      for(const f of files.slice(0,4)) images.push(await fileToImage(f));
+      const out=await SmartCapture.analyse(text,images);
+      renderSmartResults(out);
+      $("#scStatus").textContent=out.summary||"";
+    }catch(err){ $("#scStatus").textContent=""; toast(err.message,"warn"); }
+    btn.disabled=false;
+  };
+}
+function renderSmartResults(out){
+  const tasks=out.tasks||[];
+  const projs=ProjectService.all().filter(p=>p.status!=="completed");
+  if(!tasks.length){ $("#scResults").innerHTML=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No actionable tasks found in that material.</p>`; return; }
+  $("#scResults").innerHTML=`
+    <div class="grouphead" style="margin-top:12px"><span class="eyebrow">Proposed tasks — untick any you don't want</span></div>
+    ${tasks.map((t,i)=>`
+    <div class="card" style="margin-bottom:8px;padding:10px 12px">
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <input type="checkbox" id="scChk${i}" checked style="width:auto;margin-top:9px">
+        <div style="flex:1">
+          <input id="scT${i}" value="${esc(t.title||"")}">
+          <div class="fieldrow" style="margin-top:8px;margin-bottom:0">
+            <div class="field" style="margin:0"><label>Due</label><input id="scD${i}" type="date" value="${esc(t.due_date||"")}"></div>
+            <div class="field" style="margin:0"><label>Priority</label><select id="scP${i}">${["normal","high","low"].map(p=>`<option ${t.priority===p?"selected":""}>${p}</option>`).join("")}</select></div>
+          </div>
+          <div class="fieldrow" style="margin-top:8px;margin-bottom:0">
+            <div class="field" style="margin:0"><label>Context</label><select id="scC${i}"><option value="">—</option>${AppState.data.contexts.map(c=>`<option ${t.context===c?"selected":""}>${esc(c)}</option>`).join("")}</select></div>
+            <div class="field" style="margin:0"><label>Project</label><select id="scPr${i}"><option value="">—</option>${projs.map(p=>`<option value="${esc(p.id)}" ${t.project===p.name?"selected":""}>${esc(p.name)}</option>`).join("")}</select></div>
+          </div>
+          ${t.person?`<div class="mono" style="font-size:10.5px;color:var(--faint);margin-top:6px">Person: ${esc(t.person)} · suggested: ${esc(t.suggested_status||"inbox")}</div>`:""}
+          ${t.description?`<div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(t.description)}</div>`:""}
+        </div>
+      </div>
+    </div>`).join("")}
+    <div class="modalfoot" style="justify-content:flex-start"><button class="btn primary" id="scAdd">Add selected tasks</button></div>`;
+  $("#scAdd").onclick=()=>{
+    let n=0;
+    tasks.forEach((t,i)=>{
+      if(!$("#scChk"+i)||!$("#scChk"+i).checked) return;
+      const title=$("#scT"+i).value.trim(); if(!title) return;
+      const due=$("#scD"+i).value||null;
+      const status=(t.suggested_status==="waiting")?"waiting":(due?"next":"inbox");
+      const task=TaskService.create({
+        title:title, description:t.description||"", status:status,
+        clarified:status!=="inbox",
+        context:$("#scC"+i).value||null, projectId:$("#scPr"+i).value||null,
+        priority:$("#scP"+i).value||"normal", dueDate:due,
+        tags:["smart-capture"]
+      });
+      if(status==="waiting"&&t.person){ task.waitingFor={person:t.person,delegatedDate:todayStr(),expectedDate:due,followUpDate:null,lastFollowUp:null,organisation:""}; }
+      n++;
+    });
+    markDirty(); closeModal(); render();
+    toast(n?n+" task"+(n===1?"":"s")+" added":"Nothing selected",n?"ok":"warn");
+  };
+}
 function cloudCardHTML(){
   const s=CloudService.signedIn();
   return `<div class="card"><h2><span class="eyebrow">Cloud &amp; delegation</span></h2>
@@ -1412,7 +1524,10 @@ function cloudCardHTML(){
         <button class="btn" id="cloudSync">Sync now</button>
         <button class="btn" id="cloudMoney">Money ledger</button>
         <button class="btn ghost" id="cloudOut">Sign out</button>
-      </div>`
+      </div>
+      <div class="field" style="margin-top:10px"><label>Smart capture rules — plain English, one per line</label>
+      <textarea id="aiRules" rows="4" placeholder="e.g. Anything from Talan relates to the ISO 27001 project&#10;Tasks mentioning irrigation or the borehole go to TRJ Farms&#10;Emails from Andrew are high priority">${esc(AppState.data.settings.aiRules||"")}</textarea></div>
+      <button class="btn" id="aiRulesSave">Save rules</button>`
     :`
       <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px">Sign in to delegate tasks to other people (they use the companion Tasks app) and to manage money floats and receipts.</p>
       <div class="field"><label>Email</label><input id="cloudEmail" type="email" autocomplete="username"></div>
@@ -1840,6 +1955,7 @@ function fillFocusMoney(){
 function bindView(){
   const v=AppState.currentView;
   if(v==="focus") fillFocusMoney();
+  const sb=$("#smartBtn"); if(sb) sb.onclick=openSmartCapture;
   // shared: open task drawer / project card
   $$("#view [data-task]").forEach(el=>el.addEventListener("click",e=>{
     if(e.target.closest("[data-complete],[data-followup],[data-reactivate],[data-activate],[data-toproject],button.btn")) return;
@@ -1969,6 +2085,7 @@ function bindView(){
     const cOut=$("#cloudOut"); if(cOut) cOut.onclick=()=>{ CloudService.signOut(); toast("Signed out","ok"); render(); };
     const cSync=$("#cloudSync"); if(cSync) cSync.onclick=async()=>{ try{ const n=await CloudService.pull(); toast(n?n+" update"+(n===1?"":"s")+" from cloud":"Up to date","ok"); render(); }catch(err){ toast(err.message,"warn"); } };
     const cMon=$("#cloudMoney"); if(cMon) cMon.onclick=openLedgerModal;
+    const aiS=$("#aiRulesSave"); if(aiS) aiS.onclick=()=>{ AppState.data.settings.aiRules=$("#aiRules").value; markDirty(); toast("Rules saved","ok"); };
     $("#setReconnect").onclick=()=>DataProvider.reconnect();
     const dl=$("#setDownload"); if(dl) dl.onclick=()=>DataProvider.save(true);
     $("#setExport").onclick=()=>{downloadJSON(AppState.data,"gtd-backup-"+backupStamp()+".json"); toast("Backup exported","ok");};
@@ -2056,7 +2173,8 @@ document.addEventListener("DOMContentLoaded", async ()=>{
       <h2><span class="eyebrow">All views</span></h2>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
         ${views.map(v=>`<button class="btn" data-mnav="${v[0]}" style="padding:13px 8px;text-align:centre">${v[1]}</button>`).join("")}
-        <button class="btn primary" data-mcapture style="grid-column:1/3;padding:13px 8px">+ Quick capture</button>
+        <button class="btn primary" data-mcapture style="padding:13px 8px">+ Quick capture</button>
+        <button class="btn" data-msmart style="padding:13px 8px">✨ Smart capture</button>
       </div>
       <div class="modalfoot"><button class="btn" id="moreClose">Close</button></div>
     </div></div>`;
@@ -2064,6 +2182,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
     $("#ovMore").addEventListener("click",e=>{ if(e.target.id==="ovMore") closeModal(); });
     $$("#modalHost [data-mnav]").forEach(x=>x.onclick=()=>{ closeModal(); go(x.dataset.mnav); });
     const qc=$("#modalHost [data-mcapture]"); if(qc) qc.onclick=()=>{ closeModal(); UI.captureModal(); };
+    const qs=$("#modalHost [data-msmart]"); if(qs) qs.onclick=()=>{ closeModal(); openSmartCapture(); };
   });
 
   // Search
