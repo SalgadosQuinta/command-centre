@@ -956,7 +956,7 @@ UI.focus = function(){
   const ctxOpts = AppState.data.contexts.map(c=>`<option ${f.context===c?"selected":""}>${esc(c)}</option>`).join("");
   return `
   <div class="viewhead"><div><h1>Focus</h1><div class="sub">What deserves your attention right now</div></div>
-    <div class="viewactions"><button class="btn" data-go="review">Start review</button></div></div>
+    <div class="viewactions"><button class="btn" data-go="review">Start review</button><button class="btn primary" id="focusCapture">+ Capture</button></div></div>
 
   <div class="healthband ${h.state}" style="margin-bottom:16px">
     <span class="stateword">${h.word.toUpperCase()}</span>
@@ -1004,7 +1004,7 @@ UI.inbox = function(){
   const items=TaskService.byStatus("inbox").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   return `
   <div class="viewhead"><div><h1>Inbox</h1><div class="sub">Capture everything. Decide later.</div></div>
-    ${items.length?`<div class="viewactions">${CloudService.signedIn()?`<button class="btn" id="smartBtn">✨ Smart capture</button>`:""}<button class="btn primary" data-go="clarify">Clarify ${items.length} item${items.length===1?"":"s"} →</button></div>`:""}</div>
+    <div class="viewactions">${CloudService.signedIn()?`<button class="btn" id="smartBtn">✨ Smart capture</button>`:""}${items.length?`<button class="btn primary" data-go="clarify">Clarify ${items.length} item${items.length===1?"":"s"} →</button>`:""}</div></div>
   <div class="card" style="margin-bottom:14px">
     <input id="quickCapture" placeholder="What has your attention?  (Enter to capture — paste several lines to capture them all)" autocomplete="off" style="font-size:15px;padding:12px 14px">
     <div style="margin-top:8px" class="eyebrow">Shorthand: @Email #ISO high — original text is always kept</div>
@@ -1437,7 +1437,7 @@ function fileToImage(f){
     r.readAsDataURL(f);
   });
 }
-function openSmartCapture(){
+function openSmartCapture(prefill){
   if(!CloudService.signedIn()){ toast("Sign in first — Data & settings → Cloud","warn"); go("settings"); return; }
   $("#modalHost").innerHTML=`<div class="overlay" id="ovSmart"><div class="modal" style="max-width:680px">
     <h2><span class="eyebrow">✨ Smart capture</span></h2>
@@ -1453,6 +1453,7 @@ function openSmartCapture(){
   </div></div>`;
   $("#scCancel").onclick=closeModal;
   $("#ovSmart").addEventListener("click",e=>{ if(e.target.id==="ovSmart") closeModal(); });
+  if(prefill&&prefill.trim()){ $("#scText").value=prefill; setTimeout(()=>$("#scGo").click(),50); }
   $("#scGo").onclick=async()=>{
     const text=$("#scText").value.trim();
     const files=Array.from($("#scImgs").files||[]);
@@ -1811,7 +1812,7 @@ UI.captureModal = function(preset){
     <h2>Capture</h2>
     <textarea id="cmText" placeholder="What has your attention? One item per line.&#10;Shorthand: Email Mark about ISO SOW @Email #ISO high" style="min-height:110px;font-size:14.5px" autofocus></textarea>
     <div class="modalfoot"><span class="eyebrow" style="margin-right:auto;align-self:center">Ctrl+Enter to capture</span>
-      <button class="btn" data-close="1">Cancel</button><button class="btn primary" id="cmGo">Capture</button></div>
+      <button class="btn" data-close="1">Cancel</button>${CloudService.signedIn()?`<button class="btn" id="cmSmart" title="Extract tasks, dates and people with AI first">✨ Analyse</button>`:""}<button class="btn primary" id="cmGo">Capture</button></div>
   </div></div>`;
   const doIt=()=>{
     const v=$("#cmText").value; if(!v.trim()){closeModal(); return;}
@@ -1821,6 +1822,7 @@ UI.captureModal = function(preset){
     toast(created.length+" item"+(created.length===1?"":"s")+" captured","ok");
   };
   $("#cmGo").onclick=doIt;
+  const cs=$("#cmSmart"); if(cs) cs.onclick=()=>{ const v=$("#cmText").value; closeModal(); openSmartCapture(v); };
   $("#cmText").addEventListener("keydown",e=>{ if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)) doIt(); });
   $("#cmText").focus();
 };
@@ -1955,7 +1957,8 @@ function fillFocusMoney(){
 function bindView(){
   const v=AppState.currentView;
   if(v==="focus") fillFocusMoney();
-  const sb=$("#smartBtn"); if(sb) sb.onclick=openSmartCapture;
+  const sb=$("#smartBtn"); if(sb) sb.onclick=()=>openSmartCapture();
+  const fc=$("#focusCapture"); if(fc) fc.onclick=()=>UI.captureModal();
   // shared: open task drawer / project card
   $$("#view [data-task]").forEach(el=>el.addEventListener("click",e=>{
     if(e.target.closest("[data-complete],[data-followup],[data-reactivate],[data-activate],[data-toproject],button.btn")) return;
