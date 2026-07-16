@@ -200,6 +200,22 @@ const Cloud={
 };
 Cloud.load();
 
+const VAPID_PUBLIC="BLVIKKCjHYJollBuxb00jUN2eVIAeRbjmRGcNoDSQKawpJum1g6Srq0ZZGPC6YynIMtGGlSGN5ok4v-82ttnJnw";
+const Push={
+  b64(s){const p="=".repeat((4-s.length%4)%4);const b=(s+p).replace(/-/g,"+").replace(/_/g,"/");const r=atob(b);return Uint8Array.from([...r].map(c=>c.charCodeAt(0)));},
+  supported(){return "serviceWorker" in navigator&&"PushManager" in window&&location.protocol==="https:";},
+  async subscribe(){
+    const perm=await Notification.requestPermission();
+    if(perm!=="granted")throw new Error("Permission not granted");
+    const reg=await navigator.serviceWorker.ready;
+    const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:this.b64(VAPID_PUBLIC)});
+    await Cloud.api("push_subscriptions",{method:"POST",prefer:"return=minimal",body:{user_id:Cloud.me().id,subscription:sub.toJSON()}});
+    localStorage.setItem("tasks-push","on");
+  },
+  async notify(to,title,body,url){
+    try{await fetch(`${CLOUD.url}/functions/v1/notify`,{method:"POST",headers:{apikey:CLOUD.key,Authorization:"Bearer "+Cloud.session.access_token,"Content-Type":"application/json"},body:JSON.stringify({to_user_id:to,title,body:body||"",url:url||"./"})});}catch(e){}
+  }
+};
 let ALL=[],TX=[],PROFILES=[],TAB="inbox",CALM=null,CALSEL=null,SHOWDONE=false;
 
 const inboxTasks=()=>ALL.filter(t=>t.assignee_id===Cloud.me().id&&t.owner_id!==Cloud.me().id);
@@ -251,15 +267,16 @@ function dashHTML(){
   const bal=balances();
   const moneyChips=Object.keys(bal).map(c=>{const v=Math.round(bal[c]*100)/100;
     return `<span class="mono" style="font-size:13px;color:${v<0?"var(--danger)":"var(--text)"}">${c} ${(v<0?"−":"")+Math.abs(v).toFixed(2)}${v<0?" owed to you":""}</span>`;}).join(" · ");
+  const pushCard=(Push.supported()&&localStorage.getItem("tasks-push")!=="on")?`<div class="card" style="border-left:3px solid var(--accent)"><div class="row" style="justify-content:space-between"><div><div class="eyebrow">Notifications</div><div class="sub" style="margin-top:4px">Get alerted when a new task or float arrives.</div></div><button class="btn primary" id="pushEnable">Enable</button></div></div>`:"";
   const moneyCard=`<div class="card" style="cursor:pointer" data-gotab="money">
     <div class="row" style="justify-content:space-between">
       <div><div class="eyebrow">Money</div>${Object.keys(bal).length?`<div style="margin-top:4px">${moneyChips}</div>`:`<div class="sub" style="margin-top:4px">No entries yet</div>`}</div>
       <div style="text-align:right"><div class="eyebrow">Open tasks</div><div class="bal" style="font-size:21px">${open.length}</div></div>
     </div></div>`;
   if(!overdue.length&&!today.length&&!newIn.length)
-    return `<div class="card" style="border-left:3px solid var(--ok)"><div class="eyebrow" style="color:var(--ok)">All clear</div><div class="sub" style="margin-top:4px">Nothing overdue and nothing due today.</div></div>`+moneyCard;
+    return pushCard+`<div class="card" style="border-left:3px solid var(--ok)"><div class="eyebrow" style="color:var(--ok)">All clear</div><div class="sub" style="margin-top:4px">Nothing overdue and nothing due today.</div></div>`+moneyCard;
   const line=t=>`<div class="tx" style="cursor:pointer" data-goto="${esc(t.id)}"><div>${esc(t.title)}<div class="meta">${t.owner_id!==Cloud.me().id?"from "+esc(t.owner?.display_name||t.owner?.email||""):esc(t.category||"your task")}</div></div><div class="amt ${t.due_date&&t.due_date<tStr?"spend":""}">${t.due_date?esc(fmtD(t.due_date)):""}</div></div>`;
-  return `<div class="card" style="border-left:3px solid ${overdue.length?"var(--danger)":"var(--accent)"}">
+  return pushCard+`<div class="card" style="border-left:3px solid ${overdue.length?"var(--danger)":"var(--accent)"}">
     <div class="row" style="gap:14px">
       <div><div class="eyebrow" style="color:${overdue.length?"var(--danger)":"var(--muted)"}">Overdue</div><div class="bal ${overdue.length?"neg":""}" style="font-size:21px">${overdue.length}</div></div>
       <div><div class="eyebrow">Due today</div><div class="bal" style="font-size:21px">${today.length}</div></div>
@@ -475,7 +492,9 @@ function openComment(t){
 function bind(){
   $$("#content [data-act]").forEach(b=>b.onclick=async()=>{
     const body={status:b.dataset.act}; if(b.dataset.act==="done")body.completed_at=nowISO();
-    try{await patchTask(b.dataset.id,body);renderApp();toast(b.dataset.act==="done"?"Marked done":"Updated");}catch(e){toast(e.message);}
+    try{await patchTask(b.dataset.id,body);renderApp();toast(b.dataset.act==="done"?"Marked done":"Updated");
+      if(b.dataset.act==="done"){const t=ALL.find(x=>x.id===b.dataset.id); if(t&&t.owner_id!==Cloud.me().id) Push.notify(t.owner_id,"Task completed",Cloud.me().email+" finished: "+t.title,"./");}
+    }catch(e){toast(e.message);}
   });
   $$("#content [data-reopen]").forEach(b=>b.onclick=async()=>{
     const t=ALL.find(x=>x.id===b.dataset.reopen); if(!t) return;
@@ -495,6 +514,7 @@ function bind(){
   const cn=$("#calNext"); if(cn)cn.onclick=()=>{CALM.m++;if(CALM.m>11){CALM.m=0;CALM.y++;}renderApp();};
   $$("#content .calcell").forEach(c=>c.onclick=()=>{CALSEL=CALSEL===c.dataset.day?null:c.dataset.day;renderApp();});
   $$("#content [data-goday]").forEach(r=>r.onclick=()=>{const d=r.dataset.goday;CALM={y:+d.slice(0,4),m:+d.slice(5,7)-1};CALSEL=d;renderApp();});
+  const pe=$("#pushEnable"); if(pe) pe.onclick=async()=>{ try{ await Push.subscribe(); toast("Notifications enabled"); renderApp(); }catch(e){ toast(e.message); } };
   $$("#content [data-gotab]").forEach(c=>c.onclick=()=>{TAB=c.dataset.gotab;renderApp();});
   $$("#content [data-goto]").forEach(r=>r.onclick=()=>{
     const t=ALL.find(x=>x.id===r.dataset.goto); if(!t) return;
@@ -525,7 +545,9 @@ async function recordSpend(){
       ledger_owner_id:ownerId,person_id:Cloud.me().id,type:"spend",amount:amt,
       currency:$("#spCur").value,description:$("#spDesc").value.trim()||null,
       task_id:$("#spTask").value||null,receipt_path:receipt,created_by:Cloud.me().id}});
-    toast("Spend recorded");await loadAll();
+    toast("Spend recorded");
+      Push.notify(ownerId,"Spend recorded",Cloud.me().email+" spent "+$("#spCur").value+" "+amt.toFixed(2)+($("#spDesc").value?(" on "+$("#spDesc").value):""),"./");
+      await loadAll();
   }catch(e){toast(e.message);}
   sv.disabled=false;
 }

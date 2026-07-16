@@ -60,8 +60,13 @@ Extraction principles:
 - priority: "high" only when urgency is explicit or implied by the rules; otherwise "normal".
 - summary: one sentence describing what the material is.
 
+Also extract money items when the material contains them:
+- finance_payments: bills/invoices the user must PAY — {"name","amount","currency","due_date","recurring":"none|weekly|monthly|quarterly|annually","category"}
+- finance_revenue: money the user expects to RECEIVE — {"name","client","amount","currency","expected_date","recurring"}
+Only include amounts explicitly present. Empty arrays when none.
+
 Respond ONLY with JSON, no markdown fences, exactly this shape:
-{"summary":"...","tasks":[{"title":"...","description":"...","due_date":null,"priority":"normal","context":null,"project":null,"area":null,"person":null,"suggested_status":"inbox"}]}`;
+{"summary":"...","tasks":[{"title":"...","description":"...","due_date":null,"priority":"normal","context":null,"project":null,"area":null,"person":null,"suggested_status":"inbox"}],"finance_payments":[],"finance_revenue":[]}`;
 
     const content: unknown[] = [];
     for (const im of (images || []).slice(0, 4)) {

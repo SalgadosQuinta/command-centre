@@ -320,6 +320,8 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
     <button class="navbtn" title="Anything needing more than one action — each must have a next action" data-view="projects"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Projects<span class="cnt" id="cntProjects"></span></button>
     <button class="navbtn" title="Everything delegated or owed to you, with follow-ups" data-view="waiting"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Waiting for<span class="cnt" id="cntWaiting"></span></button>
     <button class="navbtn" title="Per-person view: their tasks and the money position" data-view="people"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5 5 0 0 1 6 4.5"/></svg>People</button>
+    <button class="navbtn" title="Business development — clients, stages and their pipelines" data-view="clients"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/></svg>Clients</button>
+    <button class="navbtn" title="Goals with linked projects, and daily habit streaks" data-view="goals"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>Goals</button>
     <button class="navbtn" title="Expected revenue and payments to make — your 30/60 day money picture" data-view="finance"><svg viewBox="0 0 24 24"><path d="M12 2v20M17 6.5C17 4.6 14.8 3 12 3S7 4.6 7 6.5 9.2 10 12 10s5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5"/></svg>Finance</button>
     <button class="navbtn" title="Ideas you are not committing to yet — reviewed weekly" data-view="someday"><svg viewBox="0 0 24 24"><path d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/></svg>Someday / Maybe<span class="cnt" id="cntSomeday"></span></button>
     <button class="navbtn" title="Information you want to keep but never act on" data-view="reference"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4H6.5A2.5 2.5 0 0 0 4 6.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>Reference</button>
@@ -1576,7 +1578,26 @@ function renderSmartResults(out){
         </div>
       </div>
     </div>`).join("")}
+    ${(out.finance_payments&&out.finance_payments.length)||(out.finance_revenue&&out.finance_revenue.length)?`
+    <div class="grouphead"><span class="eyebrow">Money found in this material</span></div>
+    ${(out.finance_revenue||[]).map((r,i)=>`<div class="card" style="margin-bottom:6px;padding:9px 12px;display:flex;justify-content:space-between;gap:8px;align-items:center">
+      <span style="font-size:12.5px">↑ Expected: <b>${esc(r.name||"Revenue")}</b>${r.client?" · "+esc(r.client):""} — ${esc(r.currency||"USD")} ${esc(String(r.amount||0))}${r.expected_date?" · "+esc(r.expected_date):""}</span>
+      <button class="btn sm" data-screv="${i}">Add to pipeline</button></div>`).join("")}
+    ${(out.finance_payments||[]).map((p,i)=>`<div class="card" style="margin-bottom:6px;padding:9px 12px;display:flex;justify-content:space-between;gap:8px;align-items:center">
+      <span style="font-size:12.5px">↓ Payment: <b>${esc(p.name||"Payment")}</b> — ${esc(p.currency||"USD")} ${esc(String(p.amount||0))}${p.due_date?" · due "+esc(p.due_date):""}${p.recurring&&p.recurring!=="none"?" · "+esc(p.recurring):""}</span>
+      <button class="btn sm" data-scpay="${i}">Add payment</button></div>`).join("")}`:""}
     <div class="modalfoot" style="justify-content:flex-start"><button class="btn primary" id="scAdd">Add selected tasks</button></div>`;
+  $$("#scResults [data-screv]").forEach(b=>b.onclick=()=>{
+    const r=(out.finance_revenue||[])[+b.dataset.screv]; if(!r) return;
+    FinanceService.addIncome({name:r.name||"Revenue",client:r.client||"",amount:parseFloat(r.amount)||0,currency:r.currency||"USD",expectedDate:r.expected_date||todayStr(),recurring:r.recurring||"none"});
+    if(r.client) ClientService.ensure(r.client);
+    b.textContent="Added ✓"; b.disabled=true; toast("Added to revenue pipeline","ok");
+  });
+  $$("#scResults [data-scpay]").forEach(b=>b.onclick=()=>{
+    const p=(out.finance_payments||[])[+b.dataset.scpay]; if(!p) return;
+    FinanceService.addOutgoing({name:p.name||"Payment",category:p.category||"",amount:parseFloat(p.amount)||0,currency:p.currency||"USD",dueDate:p.due_date||todayStr(),recurring:p.recurring||"none"});
+    b.textContent="Added ✓"; b.disabled=true; toast("Payment added","ok");
+  });
   $("#scAdd").onclick=()=>{
     let n=0;
     tasks.forEach((t,i)=>{
@@ -1628,6 +1649,29 @@ const FXService = {
     const a=this.approxUSD(sums);
     if(!a||Object.keys(sums).length<2&&sums.USD!==undefined) return "";
     return `<div class="mono" style="font-size:10.5px;color:var(--faint);margin-top:3px">≈ USD ${(a.usd<0?"−":"")+Math.abs(a.usd).toFixed(0)} indicative${a.excluded.length?" · excl. "+a.excluded.join(", "):""}</div>`;
+  }
+};
+const VAPID_PUBLIC="BLVIKKCjHYJollBuxb00jUN2eVIAeRbjmRGcNoDSQKawpJum1g6Srq0ZZGPC6YynIMtGGlSGN5ok4v-82ttnJnw";
+const PushService = {
+  b64ToU8(s){ const p="=".repeat((4-s.length%4)%4); const b=(s+p).replace(/-/g,"+").replace(/_/g,"/"); const raw=atob(b); return Uint8Array.from([...raw].map(c=>c.charCodeAt(0))); },
+  supported(){ return "serviceWorker" in navigator && "PushManager" in window && location.protocol==="https:"; },
+  async subscribe(){
+    if(!this.supported()) throw new Error("Notifications need HTTPS and a supported browser");
+    const perm=await Notification.requestPermission();
+    if(perm!=="granted") throw new Error("Notification permission was not granted");
+    const reg=await navigator.serviceWorker.ready;
+    const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:this.b64ToU8(VAPID_PUBLIC)});
+    await CloudService.api("push_subscriptions",{method:"POST",prefer:"return=minimal",body:{user_id:CloudService.me().id,subscription:sub.toJSON()}});
+    localStorage.setItem("gtdcc-push","on");
+    return true;
+  },
+  async notify(toUserId,title,body,url){
+    if(!CloudService.signedIn()) return;
+    try{
+      await fetch(`${CLOUD.url}/functions/v1/notify`,{method:"POST",
+        headers:{apikey:CLOUD.key,Authorization:"Bearer "+CloudService.session.access_token,"Content-Type":"application/json"},
+        body:JSON.stringify({to_user_id:toUserId,title:title,body:body||"",url:url||"./"})});
+    }catch(e){}
   }
 };
 const CloudSync = {
@@ -1697,6 +1741,7 @@ function cloudCardHTML(){
       <div class="modalfoot" style="justify-content:flex-start">
         <button class="btn" id="cloudSync">Sync now</button>
         <button class="btn" id="cloudSyncData">Sync data now</button>
+        <button class="btn" id="cloudPush">${localStorage.getItem("gtdcc-push")==="on"?"🔔 Notifications on":"Enable notifications"}</button>
         <button class="btn" id="cloudMoney">Money ledger</button>
         <button class="btn ghost" id="cloudOut">Sign out</button>
       </div>
@@ -1756,7 +1801,9 @@ async function openLedgerModal(){
     $("#flGive").onclick=async()=>{
       const amt=parseFloat($("#flAmount").value);
       if(!amt||amt<=0){ toast("Enter a valid amount","warn"); return; }
-      try{ await CloudService.addFloat($("#flPerson").value,amt,$("#flCur").value,$("#flDesc").value.trim()); toast("Float recorded","ok"); openLedgerModal(); }
+      try{ await CloudService.addFloat($("#flPerson").value,amt,$("#flCur").value,$("#flDesc").value.trim());
+        PushService.notify($("#flPerson").value,"Float received",$("#flCur").value+" "+amt.toFixed(2)+" from "+CloudService.me().email,"./tasks/");
+        toast("Float recorded","ok"); openLedgerModal(); }
       catch(err){ toast(err.message,"warn"); }
     };
   }catch(err){ toast(err.message,"warn"); }
@@ -1783,6 +1830,7 @@ function openDelegateModal(taskId){
           waitingFor:Object.assign({},t.waitingFor||{},{person:email,delegatedDate:todayStr(),expectedDate:$("#dlDue").value||t.waitingFor?.expectedDate||null})});
         const t2=TaskService.get(t.id); t2.cloud={id:row.id,assignee:email,status:row.status,comments:0}; markDirty();
         closeModal(); render(); toast("Task sent to "+email,"ok");
+        PushService.notify(sel.value,"New task from "+CloudService.me().email,t.title,"./tasks/");
       }catch(err){ toast(err.message,"warn"); }
     };
   }).catch(err=>toast(err.message,"warn"));
@@ -2090,6 +2138,94 @@ function healthTableHTML(){
   </tbody></table>`;
 }
 
+/* ---------------- CLIENTS ---------------- */
+const ClientService = {
+  all(){ return (AppState.data.clients=AppState.data.clients||[]); },
+  get(id){ return this.all().find(c=>c.id===id); },
+  byName(name){ return this.all().find(c=>(c.name||"").toLowerCase()===(name||"").toLowerCase()); },
+  create(x){ const c=Object.assign({id:uid("cli"),name:"",organisation:"",email:"",phone:"",stage:"lead",notes:"",createdAt:nowISO()},x); this.all().unshift(c); markDirty(); return c; },
+  update(id,p){ const c=this.get(id); if(c){ Object.assign(c,p); markDirty(); } },
+  remove(id){ const a=this.all(); const i=a.findIndex(c=>c.id===id); if(i>=0){ a.splice(i,1); markDirty(); } },
+  ensure(name){ if(!name||!name.trim()) return null; return this.byName(name)||this.create({name:name.trim()}); }
+};
+const CLIENT_STAGES=["lead","talking","proposal","won","dormant"];
+UI.clients = function(){
+  // auto-create clients from pipeline names
+  (AppState.data.finance&&AppState.data.finance.income||[]).forEach(x=>{ if(x.client) ClientService.ensure(x.client); });
+  const clients=ClientService.all();
+  const sel=AppState.clientSel&&ClientService.get(AppState.clientSel);
+  const inc=(AppState.data.finance&&AppState.data.finance.income)||[];
+  const clientCard=c=>{
+    const pipe=inc.filter(x=>(x.client||"").toLowerCase()===c.name.toLowerCase());
+    const open=pipe.filter(x=>x.status!=="received");
+    const tot={}; open.forEach(x=>tot[x.currency]=(tot[x.currency]||0)+parseFloat(x.amount||0));
+    const won={}; pipe.filter(x=>x.status==="received").forEach(x=>won[x.currency]=(won[x.currency]||0)+parseFloat(x.amount||0));
+    return `<div class="card" data-client="${esc(c.id)}" style="cursor:pointer;${sel&&sel.id===c.id?"border-color:var(--accent)":""}">
+      <div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:13.5px">${esc(c.name)}</b><span class="pill">${esc(c.stage)}</span></div>
+      ${c.organisation?`<div class="mono" style="font-size:10.5px;color:var(--faint);margin-top:3px">${esc(c.organisation)}</div>`:""}
+      <div class="mono" style="font-size:11px;color:var(--muted);margin-top:6px">
+        ${Object.keys(tot).length?"open: "+Object.keys(tot).map(cu=>money(cu,tot[cu])).join(" · "):"no open pipeline"}
+        ${Object.keys(won).length?"<br>won: "+Object.keys(won).map(cu=>money(cu,won[cu])).join(" · "):""}
+      </div></div>`;
+  };
+  return `
+  <div class="viewhead"><div><h1>Clients</h1><div class="sub">Business development — people and organisations you're pursuing</div></div>
+    <div class="viewactions"><button class="btn primary" id="newClientBtn">+ New client</button></div></div>
+  ${clients.length?`<div class="grid c3">${clients.map(clientCard).join("")}</div>`:`<div class="card"><div class="empty"><div class="big">No clients yet</div>Add the organisations you're pursuing — pipeline entries in Finance link to them by name.</div></div>`}
+  ${sel?clientDetailHTML(sel):""}`;
+};
+function clientDetailHTML(c){
+  const inc=(AppState.data.finance&&AppState.data.finance.income)||[];
+  const pipe=inc.filter(x=>(x.client||"").toLowerCase()===c.name.toLowerCase());
+  const q=c.name.toLowerCase();
+  const tasks=TaskService.all().filter(t=>!["completed"].includes(t.status)&&((t.title||"").toLowerCase().includes(q)||(t.description||"").toLowerCase().includes(q)));
+  return `<div class="card" style="margin-top:14px;border-left:3px solid var(--accent)">
+    <h2 style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span class="eyebrow">${esc(c.name)}</span>
+      <span>
+        <select id="cliStage" class="btn sm" style="padding:6px">${CLIENT_STAGES.map(s=>`<option ${c.stage===s?"selected":""}>${s}</option>`).join("")}</select>
+        <button class="btn sm" id="cliRevenue">+ Revenue</button>
+        <button class="btn sm" id="cliTask">+ Task</button>
+        <button class="btn sm ghost" id="cliEdit">Edit</button>
+        <button class="btn sm ghost" id="cliDelete" style="color:var(--danger)">Delete</button>
+      </span></h2>
+    <div class="mono" style="font-size:11px;color:var(--muted)">${esc(c.organisation||"")}${c.email?" · "+esc(c.email):""}${c.phone?" · "+esc(c.phone):""}</div>
+    <div class="grid c2" style="margin-top:10px">
+      <div>
+        <div class="eyebrow">Pipeline</div>
+        ${pipe.length?pipe.map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px;${x.status==="received"?"opacity:.55":""}">
+          <span>${esc(x.name)} <span class="mono" style="font-size:10px;color:var(--faint)">${esc(x.status)} · ${esc(fmtDate(x.expectedDate))}</span></span>
+          <span class="mono" style="font-size:11.5px">${money(x.currency,parseFloat(x.amount||0))}</span></div>`).join(""):`<p style="color:var(--muted);font-size:12px">Nothing yet — add expected revenue.</p>`}
+      </div>
+      <div>
+        <div class="eyebrow">Open tasks mentioning them</div>
+        ${tasks.length?tasks.slice(0,8).map(t=>`<div class="trow" data-task="${esc(t.id)}" style="cursor:pointer;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px">${esc(t.title)}</div>`).join(""):`<p style="color:var(--muted);font-size:12px">None found.</p>`}
+        <div class="eyebrow" style="margin-top:10px">Notes</div>
+        <textarea id="cliNotes" rows="4" style="margin-top:4px">${esc(c.notes||"")}</textarea>
+        <button class="btn sm" id="cliNotesSave" style="margin-top:6px">Save notes</button>
+      </div>
+    </div></div>`;
+}
+function openClientEditor(id){
+  const c=id?ClientService.get(id):null;
+  $("#modalHost").innerHTML=`<div class="overlay" id="ovCli"><div class="modal" style="max-width:480px">
+    <h2><span class="eyebrow">${c?"Edit client":"New client"}</span></h2>
+    <div class="field"><label>Name</label><input id="clName" value="${esc(c?c.name:"")}"></div>
+    <div class="field"><label>Organisation</label><input id="clOrg" value="${esc(c?c.organisation:"")}"></div>
+    <div class="fieldrow">
+      <div class="field"><label>Email</label><input id="clEmail" value="${esc(c?c.email:"")}"></div>
+      <div class="field"><label>Phone</label><input id="clPhone" value="${esc(c?c.phone:"")}"></div>
+    </div>
+    <div class="field"><label>Stage</label><select id="clStage">${CLIENT_STAGES.map(s=>`<option ${c&&c.stage===s?"selected":""}>${s}</option>`).join("")}</select></div>
+    <div class="modalfoot"><button class="btn" id="clCancel">Cancel</button><button class="btn primary" id="clSave">Save</button></div>
+  </div></div>`;
+  $("#clCancel").onclick=closeModal;
+  $("#clSave").onclick=()=>{
+    const name=$("#clName").value.trim(); if(!name){ toast("Name needed","warn"); return; }
+    const p={name,organisation:$("#clOrg").value.trim(),email:$("#clEmail").value.trim(),phone:$("#clPhone").value.trim(),stage:$("#clStage").value};
+    if(c) ClientService.update(id,p); else AppState.clientSel=ClientService.create(p).id;
+    closeModal(); render();
+  };
+}
 /* ---------------- FINANCE ---------------- */
 const FinanceService = {
   data(){ const d=AppState.data; d.finance=d.finance||{income:[],outgoings:[]}; d.finance.income=d.finance.income||[]; d.finance.outgoings=d.finance.outgoings||[]; return d.finance; },
@@ -2266,7 +2402,7 @@ UI.finance = function(){
             <div><b style="font-size:13.5px">${esc(x.name||"Unnamed")}</b>${x.category?` <span class="mono" style="font-size:10.5px;color:var(--faint)">· ${esc(x.category)}</span>`:""} ${recBadge(x.recurring)}</div>
             <span class="mono" style="font-size:12.5px;white-space:nowrap;color:var(--danger)">−${money(x.currency,parseFloat(x.amount||0))}</span>
           </div>
-          <div class="mono" style="font-size:10.5px;color:${x.dueDate<tStr?"var(--danger)":"var(--faint)"};margin-top:3px">due ${esc(fmtDate(x.dueDate))}${x.dueDate<tStr?" · OVERDUE":""}</div>
+          <div class="mono" style="font-size:10.5px;color:${x.dueDate<tStr?"var(--danger)":"var(--faint)"};margin-top:3px">due ${esc(fmtDate(x.dueDate))}${x.dueDate<tStr?" · OVERDUE":""}${x.receiptPath?` · <a href="#" data-finreceipt="${esc(x.receiptPath)}" style="color:var(--accent)">receipt</a>`:""}</div>
           <div class="row" style="margin-top:6px">
             <button class="btn sm" data-paid="${esc(x.id)}">Mark paid</button>
             <button class="btn sm ghost" data-editout="${esc(x.id)}">Edit</button>
@@ -2350,15 +2486,102 @@ function openOutgoingEditor(id){
       <div class="field"><label>Repeats</label><select id="foRec">${["none","weekly","monthly","quarterly","annually"].map(r=>`<option ${x&&x.recurring===r?"selected":""}>${r}</option>`).join("")}</select></div>
     </div>
     <div class="field"><label>Notes</label><input id="foNotes" value="${esc(x?x.notes:"")}"></div>
+    ${CloudService.signedIn()?`<div class="field"><label>Receipt / invoice photo ${x&&x.receiptPath?`— <a href="#" id="foViewReceipt" style="color:var(--accent)">view current</a>`:"(optional)"}</label><input id="foFile" type="file" accept="image/*,application/pdf"></div>`:""}
     <div class="modalfoot"><button class="btn" id="foCancel">Cancel</button><button class="btn primary" id="foSave">Save</button></div>
   </div></div>`;
   $("#foCancel").onclick=closeModal;
-  $("#foSave").onclick=()=>{
+  const vr=$("#foViewReceipt"); if(vr) vr.onclick=async(e)=>{ e.preventDefault(); try{ window.open(await CloudService.receiptUrl(x.receiptPath),"_blank"); }catch(err){ toast(err.message,"warn"); } };
+  $("#foSave").onclick=async()=>{
     const amt=parseFloat($("#foAmount").value);
     if(!$("#foName").value.trim()||!amt||amt<=0){ toast("Name and a valid amount are needed","warn"); return; }
     const patch={name:$("#foName").value.trim(),category:$("#foCat").value.trim(),amount:amt,currency:$("#foCur").value,dueDate:$("#foDate").value||todayStr(),recurring:$("#foRec").value,notes:$("#foNotes").value.trim()};
+    const f=$("#foFile")&&$("#foFile").files[0];
+    if(f&&CloudService.signedIn()){
+      try{
+        const safe="fin-"+Date.now()+"-"+f.name.replace(/[^a-zA-Z0-9.\-_]/g,"_");
+        const path=CloudService.me().id+"/"+safe;
+        const r=await fetch(`${CLOUD.url}/storage/v1/object/receipts/${path}`,{method:"POST",headers:{apikey:CLOUD.key,Authorization:"Bearer "+CloudService.session.access_token,"Content-Type":f.type||"application/octet-stream"},body:f});
+        if(r.ok) patch.receiptPath=path; else toast("Receipt upload failed — payment saved without it","warn");
+      }catch(err){ toast("Receipt upload failed — payment saved without it","warn"); }
+    }
     if(x) FinanceService.update("outgoings",id,patch); else FinanceService.addOutgoing(patch);
     closeModal(); render(); toast("Saved","ok");
+  };
+}
+/* ---------------- GOALS & HABITS ---------------- */
+const GoalService = {
+  all(){ return (AppState.data.goals=AppState.data.goals||[]); },
+  get(id){ return this.all().find(g=>g.id===id); },
+  create(x){ const g=Object.assign({id:uid("goal"),title:"",targetDate:"",notes:"",projectIds:[],createdAt:nowISO()},x); this.all().unshift(g); markDirty(); return g; },
+  update(id,p){ const g=this.get(id); if(g){ Object.assign(g,p); markDirty(); } },
+  remove(id){ const a=this.all(); const i=a.findIndex(g=>g.id===id); if(i>=0){ a.splice(i,1); markDirty(); } }
+};
+const HabitService = {
+  all(){ return (AppState.data.habits=AppState.data.habits||[]); },
+  get(id){ return this.all().find(x=>x.id===id); },
+  create(name){ const x={id:uid("hab"),name,history:{},createdAt:nowISO()}; this.all().push(x); markDirty(); return x; },
+  toggle(id,date){ const x=this.get(id); if(!x) return; x.history=x.history||{}; if(x.history[date]) delete x.history[date]; else x.history[date]=true; markDirty(); },
+  streak(x){ let n=0,d=todayStr(); if(!x.history[d]) d=addDays(d,-1); while(x.history[d]){ n++; d=addDays(d,-1); } return n; },
+  remove(id){ const a=this.all(); const i=a.findIndex(x=>x.id===id); if(i>=0){ a.splice(i,1); markDirty(); } }
+};
+UI.goals = function(){
+  const goals=GoalService.all(); const habits=HabitService.all(); const tStr=todayStr();
+  const projProgress=g=>{
+    const projs=(g.projectIds||[]).map(id=>ProjectService.get(id)).filter(Boolean);
+    if(!projs.length) return null;
+    const done=projs.filter(p=>p.status==="completed").length;
+    return {done,total:projs.length,names:projs.map(p=>p.name)};
+  };
+  return `
+  <div class="viewhead"><div><h1>Goals &amp; habits</h1><div class="sub">Higher horizons — what the projects are for, and the daily disciplines</div></div>
+    <div class="viewactions"><button class="btn" id="newHabitBtn">+ Habit</button><button class="btn primary" id="newGoalBtn">+ Goal</button></div></div>
+  <div class="grid c2">
+    <div class="card">
+      <h2><span class="eyebrow">Goals</span></h2>
+      ${goals.length?goals.map(g=>{
+        const pr=projProgress(g);
+        return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
+          <div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:13.5px">${esc(g.title)}</b>
+            <span><button class="btn sm ghost" data-editgoal="${esc(g.id)}">Edit</button><button class="btn sm ghost" data-delgoal="${esc(g.id)}" style="color:var(--danger)">✕</button></span></div>
+          ${g.targetDate?`<div class="mono" style="font-size:10.5px;color:${g.targetDate<tStr?"var(--danger)":"var(--faint)"}">target ${esc(fmtDate(g.targetDate))}</div>`:""}
+          ${pr?`<div style="margin-top:6px"><div class="bar" style="height:6px;background:var(--panel2);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.round(100*pr.done/pr.total)}%;background:var(--accent)"></div></div>
+            <div class="mono" style="font-size:10px;color:var(--faint);margin-top:3px">${pr.done}/${pr.total} linked projects complete · ${pr.names.map(esc).join(", ")}</div></div>`:`<div class="mono" style="font-size:10px;color:var(--faint);margin-top:4px">no projects linked yet</div>`}
+          ${g.notes?`<div style="font-size:12px;color:var(--muted);margin-top:5px">${esc(g.notes)}</div>`:""}
+        </div>`;}).join("")
+      :`<div class="empty">No goals yet. A goal is an outcome — link the projects that serve it.</div>`}
+    </div>
+    <div class="card">
+      <h2><span class="eyebrow">Habits — today</span></h2>
+      ${habits.length?habits.map(x=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)">
+          <label style="display:flex;align-items:center;gap:10px;margin:0;font-size:13.5px;color:var(--text);text-transform:none;letter-spacing:0;font-family:var(--sans);cursor:pointer">
+            <input type="checkbox" data-habit="${esc(x.id)}" ${x.history&&x.history[tStr]?"checked":""} style="width:auto">${esc(x.name)}</label>
+          <span><span class="badge" title="streak">${HabitService.streak(x)}🔥</span> <button class="btn sm ghost" data-delhabit="${esc(x.id)}" style="color:var(--danger)">✕</button></span>
+        </div>`).join("")
+      :`<div class="empty">No habits yet. Small daily ticks — gym, reading, calls home.</div>`}
+    </div>
+  </div>`;
+};
+function openGoalEditor(id){
+  const g=id?GoalService.get(id):null;
+  const projs=ProjectService.all();
+  $("#modalHost").innerHTML=`<div class="overlay" id="ovGoal"><div class="modal" style="max-width:520px">
+    <h2><span class="eyebrow">${g?"Edit goal":"New goal"}</span></h2>
+    <div class="field"><label>Outcome</label><input id="goTitle" value="${esc(g?g.title:"")}" placeholder="e.g. TRJ Farms orchard producing year-round by 2027"></div>
+    <div class="field"><label>Target date</label><input id="goDate" type="date" value="${esc(g?g.targetDate:"")}"></div>
+    <div class="field"><label>Linked projects</label>
+      <div style="max-height:160px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:8px">
+      ${projs.map(p=>`<label style="display:flex;gap:8px;align-items:center;margin:4px 0;font-size:12.5px;text-transform:none;letter-spacing:0;font-family:var(--sans);color:var(--text)"><input type="checkbox" class="goProj" value="${esc(p.id)}" ${g&&(g.projectIds||[]).includes(p.id)?"checked":""} style="width:auto">${esc(p.name)}</label>`).join("")||'<span style="color:var(--faint);font-size:12px">No projects yet</span>'}
+      </div></div>
+    <div class="field"><label>Notes</label><textarea id="goNotes" rows="3">${esc(g?g.notes:"")}</textarea></div>
+    <div class="modalfoot"><button class="btn" id="goCancel">Cancel</button><button class="btn primary" id="goSave">Save</button></div>
+  </div></div>`;
+  $("#goCancel").onclick=closeModal;
+  $("#goSave").onclick=()=>{
+    const title=$("#goTitle").value.trim(); if(!title){ toast("Give the goal a title","warn"); return; }
+    const p={title,targetDate:$("#goDate").value||"",notes:$("#goNotes").value.trim(),projectIds:$$(".goProj:checked").map(x=>x.value)};
+    if(g) GoalService.update(id,p); else GoalService.create(p);
+    closeModal(); render();
   };
 }
 /* ---------------- NOTES ---------------- */
@@ -2559,10 +2782,11 @@ UI.captureModal = function(preset){
     <div class="modalfoot"><span class="eyebrow" style="margin-right:auto;align-self:center">Ctrl+Enter to capture</span>
       ${micBtnHTML("cmMic")}<button class="btn" data-close="1">Cancel</button>${CloudService.signedIn()?`<button class="btn" id="cmSmart" title="Extract tasks, dates and people with AI first">✨ Analyse</button>`:""}<button class="btn primary" id="cmGo">Capture</button></div>
   </div></div>`;
+  if(preset&&preset.presetText){ $("#cmText").value=preset.presetText; const ta=$("#cmText"); ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length); }
   const doIt=()=>{
     const v=$("#cmText").value; if(!v.trim()){closeModal(); return;}
     const created=TaskService.captureLines(v);
-    if(preset) created.forEach(t=>TaskService.update(t.id,preset));
+    if(preset&&!preset.presetText) created.forEach(t=>TaskService.update(t.id,preset));
     closeModal(); render();
     toast(created.length+" item"+(created.length===1?"":"s")+" captured","ok");
   };
@@ -2728,7 +2952,27 @@ function bindView(){
   $$("#view [data-paid]").forEach(b=>b.onclick=()=>{ FinanceService.markPaid(b.dataset.paid); render(); toast("Marked paid","ok"); });
   $$("#view [data-editout]").forEach(b=>b.onclick=()=>openOutgoingEditor(b.dataset.editout));
   $$("#view [data-delout]").forEach(b=>b.onclick=()=>{ if(confirm("Delete this payment?")){ FinanceService.remove("outgoings",b.dataset.delout); render(); } });
+  $$("#view [data-finreceipt]").forEach(a=>a.onclick=async(e)=>{ e.preventDefault(); try{ window.open(await CloudService.receiptUrl(a.dataset.finreceipt),"_blank"); }catch(err){ toast(err.message,"warn"); } });
   const nn=$("#newNoteBtn"); if(nn) nn.onclick=()=>{ const n=NoteService.create(); openNoteEditor(n.id); };
+  $$("#view [data-client]").forEach(el=>el.addEventListener("click",()=>{ AppState.clientSel=el.dataset.client; render(); }));
+  const nc=$("#newClientBtn"); if(nc) nc.onclick=()=>openClientEditor();
+  if(v==="clients"&&AppState.clientSel){
+    const c=ClientService.get(AppState.clientSel);
+    if(c){
+      const st=$("#cliStage"); if(st) st.onchange=()=>{ ClientService.update(c.id,{stage:st.value}); render(); };
+      const ce=$("#cliEdit"); if(ce) ce.onclick=()=>openClientEditor(c.id);
+      const cd=$("#cliDelete"); if(cd) cd.onclick=()=>{ if(confirm("Delete this client? (Pipeline entries stay in Finance)")){ ClientService.remove(c.id); AppState.clientSel=null; render(); } };
+      const cr=$("#cliRevenue"); if(cr) cr.onclick=()=>{ openIncomeEditor(); setTimeout(()=>{ const f=$("#fiClient"); if(f) f.value=c.name; },60); };
+      const ct=$("#cliTask"); if(ct) ct.onclick=()=>UI.captureModal({presetText:c.name+": "});
+      const cn=$("#cliNotesSave"); if(cn) cn.onclick=()=>{ ClientService.update(c.id,{notes:$("#cliNotes").value}); toast("Notes saved","ok"); };
+    }
+  }
+  const ng=$("#newGoalBtn"); if(ng) ng.onclick=()=>openGoalEditor();
+  const nh=$("#newHabitBtn"); if(nh) nh.onclick=()=>{ const name=prompt("Habit name (e.g. Gym):"); if(name&&name.trim()){ HabitService.create(name.trim()); render(); } };
+  $$("#view [data-editgoal]").forEach(b=>b.onclick=()=>openGoalEditor(b.dataset.editgoal));
+  $$("#view [data-delgoal]").forEach(b=>b.onclick=()=>{ if(confirm("Delete this goal?")){ GoalService.remove(b.dataset.delgoal); render(); } });
+  $$("#view [data-habit]").forEach(cb=>cb.onchange=()=>{ HabitService.toggle(cb.dataset.habit,todayStr()); render(); });
+  $$("#view [data-delhabit]").forEach(b=>b.onclick=()=>{ if(confirm("Delete this habit and its history?")){ HabitService.remove(b.dataset.delhabit); render(); } });
   const sb=$("#smartBtn"); if(sb) sb.onclick=()=>openSmartCapture();
   const qm=$("#qcMic"); if(qm) qm.onclick=()=>voiceToggle(qm,$("#quickCapture"));
   const fc=$("#focusCapture"); if(fc) fc.onclick=()=>UI.captureModal();
@@ -2860,6 +3104,7 @@ function bindView(){
     };
     const cOut=$("#cloudOut"); if(cOut) cOut.onclick=()=>{ CloudService.signOut(); toast("Signed out","ok"); render(); };
     const cSync=$("#cloudSync"); if(cSync) cSync.onclick=async()=>{ try{ const n=await CloudService.pull(); toast(n?n+" update"+(n===1?"":"s")+" from cloud":"Up to date","ok"); render(); }catch(err){ toast(err.message,"warn"); } };
+    const cP=$("#cloudPush"); if(cP) cP.onclick=async()=>{ try{ await PushService.subscribe(); toast("Notifications enabled on this device","ok"); render(); }catch(err){ toast(err.message,"warn"); } };
     const cSD=$("#cloudSyncData"); if(cSD) cSD.onclick=async()=>{
       const adopted=await CloudSync.adoptNewerIfAny();
       if(adopted){ render(); toast("Newer data pulled from cloud","ok"); return; }
@@ -2950,7 +3195,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $$("nav .navbtn,[id=mobilenav] .navbtn").forEach(b=>{ if(b.dataset.view) b.addEventListener("click",()=>go(b.dataset.view)); });
   const mm=$("#mobMore");
   if(mm) mm.addEventListener("click",()=>{
-    const views=[["clarify","Clarify"],["waiting","Waiting for"],["people","People"],["finance","Finance"],["notes","Notes"],["calendar","Calendar"],["someday","Someday / Maybe"],["reference","Reference"],["review","Review"],["settings","Data & settings"]];
+    const views=[["clarify","Clarify"],["waiting","Waiting for"],["people","People"],["clients","Clients"],["goals","Goals & habits"],["finance","Finance"],["notes","Notes"],["calendar","Calendar"],["someday","Someday / Maybe"],["reference","Reference"],["review","Review"],["settings","Data & settings"]];
     $("#modalHost").innerHTML=`<div class="overlay" id="ovMore"><div class="modal" style="max-width:420px">
       <h2><span class="eyebrow">All views</span></h2>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
