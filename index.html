@@ -1607,6 +1607,67 @@ function openDelegateModal(taskId){
   }).catch(err=>toast(err.message,"warn"));
 }
 
+async function adminCall(body){
+  const r=await fetch(`${CLOUD.url}/functions/v1/admin-users`,{
+    method:"POST",
+    headers:{apikey:CLOUD.key,Authorization:"Bearer "+CloudService.session.access_token,"Content-Type":"application/json"},
+    body:JSON.stringify(body)});
+  let d=null; try{ d=await r.json(); }catch(e){}
+  if(r.status===404) throw new Error("The admin-users function is not deployed in Supabase yet");
+  if(!r.ok||!d||d.error) throw new Error((d&&d.error)||"Admin request failed");
+  return d;
+}
+function genPassword(){
+  const words=["Acacia","Baobab","Kudu","Msasa","Impala","Kariba","Nyanga","Savanna","Mopane","Zambezi"];
+  return words[Math.floor(Math.random()*words.length)]+Math.floor(100+Math.random()*900)+"!"+words[Math.floor(Math.random()*words.length)].slice(0,3).toLowerCase();
+}
+function openAddPerson(){
+  $("#modalHost").innerHTML=`<div class="overlay" id="ovAddP"><div class="modal" style="max-width:460px">
+    <h2><span class="eyebrow">Add person</span></h2>
+    <p style="color:var(--muted);font-size:12.5px;margin-bottom:8px">Creates a ready-to-use account for the Tasks app. Share the email and password with them — they can use it immediately.</p>
+    <div class="field"><label>Name</label><input id="apName" placeholder="e.g. Tendai"></div>
+    <div class="field"><label>Email</label><input id="apEmail" type="email" placeholder="their@email.com"></div>
+    <div class="field"><label>Password</label>
+      <div style="display:flex;gap:8px"><input id="apPass" style="flex:1" autocomplete="new-password"><button class="btn" id="apGen" type="button">Generate</button></div></div>
+    <div class="modalfoot"><button class="btn" id="apCancel">Cancel</button><button class="btn primary" id="apGo">Create account</button></div>
+  </div></div>`;
+  $("#apPass").value=genPassword();
+  $("#apGen").onclick=()=>{ $("#apPass").value=genPassword(); };
+  $("#apCancel").onclick=closeModal;
+  $("#ovAddP").addEventListener("click",e=>{ if(e.target.id==="ovAddP") closeModal(); });
+  $("#apGo").onclick=async()=>{
+    const email=$("#apEmail").value.trim(), pass=$("#apPass").value, name=$("#apName").value.trim();
+    if(!email||!pass){ toast("Email and password are needed","warn"); return; }
+    $("#apGo").disabled=true;
+    try{
+      await adminCall({action:"create",email:email,password:pass,display_name:name||null});
+      closeModal(); toast("Account created for "+email,"ok");
+      if(typeof fillPeople==="function") fillPeople();
+    }catch(err){ toast(err.message,"warn"); $("#apGo").disabled=false; }
+  };
+}
+function openResetPassword(person){
+  $("#modalHost").innerHTML=`<div class="overlay" id="ovRst"><div class="modal" style="max-width:440px">
+    <h2><span class="eyebrow">Reset password</span></h2>
+    <p style="font-size:13px;margin-bottom:8px">New password for <b>${esc(person.display_name||person.email)}</b>:</p>
+    <div class="field"><label>New password</label>
+      <div style="display:flex;gap:8px"><input id="rpPass" style="flex:1" autocomplete="new-password"><button class="btn" id="rpGen" type="button">Generate</button></div></div>
+    <div class="modalfoot"><button class="btn" id="rpCancel">Cancel</button><button class="btn primary" id="rpGo">Reset</button></div>
+  </div></div>`;
+  $("#rpPass").value=genPassword();
+  $("#rpGen").onclick=()=>{ $("#rpPass").value=genPassword(); };
+  $("#rpCancel").onclick=closeModal;
+  $("#ovRst").addEventListener("click",e=>{ if(e.target.id==="ovRst") closeModal(); });
+  $("#rpGo").onclick=async()=>{
+    const pass=$("#rpPass").value;
+    if(!pass){ toast("Enter a password","warn"); return; }
+    $("#rpGo").disabled=true;
+    try{
+      await adminCall({action:"reset",user_id:person.id,password:pass});
+      closeModal(); toast("Password reset — share it with them","ok");
+    }catch(err){ toast(err.message,"warn"); $("#rpGo").disabled=false; }
+  };
+}
 UI.people = function(){
   if(!CloudService.signedIn()){
     return `<div class="viewhead"><div><h1>People</h1><div class="sub">Delegation and money, person by person</div></div></div>
@@ -1614,7 +1675,7 @@ UI.people = function(){
     <div class="modalfoot" style="justify-content:flex-start"><button class="btn primary" data-go="settings">Go to Data &amp; settings</button></div></div>`;
   }
   return `<div class="viewhead"><div><h1>People</h1><div class="sub">Delegation and money, person by person</div></div>
-    <div class="viewactions"><button class="btn" id="pplRefresh">Refresh</button></div></div>
+    <div class="viewactions"><button class="btn" id="pplRefresh">Refresh</button><button class="btn primary" id="pplAddBtn">+ Add person</button></div></div>
   <div id="pplBody"><div class="card"><p class="mono" style="font-size:12px;color:var(--muted)">Loading people…</p></div></div>`;
 };
 function personMatchesTask(p,t){
@@ -1728,7 +1789,7 @@ async function fillPeople(){
             <div class="mono" style="font-size:11px;color:var(--faint);margin-top:4px">Given ${esc(c)} ${fmt(floats[c]||0)} · spent ${esc(c)} ${fmt(spends[c]||0)}</div>
           </div>`;}).join("")
         :`<p style="color:var(--muted);font-size:12.5px">No money entries with this person yet.</p>`}
-        <div class="modalfoot" style="justify-content:flex-start"><button class="btn primary" id="pplFloat">Give float</button><button class="btn" id="pplLedger">Full ledger</button></div>
+        <div class="modalfoot" style="justify-content:flex-start"><button class="btn primary" id="pplFloat">Give float</button><button class="btn" id="pplLedger">Full ledger</button><button class="btn ghost" id="pplReset">Reset password</button></div>
         ${rows.length?`<div class="grouphead" style="margin-top:12px"><span class="eyebrow">Recent entries</span></div>
         ${rows.slice(0,8).map(r=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px">
           <span>${r.type==="float"?"Float":"Spend"}${r.description?" — "+esc(r.description):""}${r.receipt_path?` <a href="#" data-receipt="${esc(r.receipt_path)}" style="color:var(--accent)">receipt</a>`:""}</span>
@@ -1758,6 +1819,7 @@ async function fillPeople(){
     $$("#pplBody [data-receipt]").forEach(a=>a.onclick=async(e)=>{e.preventDefault(); try{ window.open(await CloudService.receiptUrl(a.dataset.receipt),"_blank"); }catch(err){ toast(err.message,"warn"); }});
     const pf=$("#pplFloat"); if(pf) pf.onclick=openLedgerModal;
     const pl=$("#pplLedger"); if(pl) pl.onclick=openLedgerModal;
+    const rs=$("#pplReset"); if(rs) rs.onclick=()=>openResetPassword(sel);
   }catch(err){ if($("#pplBody")) $("#pplBody").innerHTML=`<div class="card"><p style="color:var(--danger);font-size:12.5px">${esc(err.message)}</p></div>`; }
 }
 UI.settings = function(){
@@ -2113,7 +2175,7 @@ function fillFocusMoney(){
 function bindView(){
   const v=AppState.currentView;
   if(v==="focus") fillFocusMoney();
-  if(v==="people"){ fillPeople(); const pr=$("#pplRefresh"); if(pr) pr.onclick=fillPeople; }
+  if(v==="people"){ fillPeople(); const pr=$("#pplRefresh"); if(pr) pr.onclick=fillPeople; const pa=$("#pplAddBtn"); if(pa) pa.onclick=openAddPerson; }
   const sb=$("#smartBtn"); if(sb) sb.onclick=()=>openSmartCapture();
   const fc=$("#focusCapture"); if(fc) fc.onclick=()=>UI.captureModal();
   // shared: open task drawer / project card

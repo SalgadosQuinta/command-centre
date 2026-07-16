@@ -200,7 +200,7 @@ const Cloud={
 };
 Cloud.load();
 
-let ALL=[],TX=[],TAB="inbox",CALM=null,CALSEL=null,SHOWDONE=false;
+let ALL=[],TX=[],PROFILES=[],TAB="inbox",CALM=null,CALSEL=null,SHOWDONE=false;
 
 const inboxTasks=()=>ALL.filter(t=>t.assignee_id===Cloud.me().id&&t.owner_id!==Cloud.me().id);
 const myTasks=()=>ALL.filter(t=>t.owner_id===Cloud.me().id&&t.assignee_id===Cloud.me().id);
@@ -209,10 +209,12 @@ const isOver=t=>t.due_date&&!isClosed(t)&&t.due_date<todayStr();
 
 async function loadAll(){
   const me=Cloud.me().id;
-  [ALL,TX]=await Promise.all([
+  [ALL,TX,PROFILES]=await Promise.all([
     Cloud.api(`cloud_tasks?or=(assignee_id.eq.${me},owner_id.eq.${me})&order=created_at.desc&select=*,owner:owner_id(email,display_name)`),
-    Cloud.api(`transactions?person_id=eq.${me}&order=created_at.desc&select=*,owner:ledger_owner_id(email,display_name)`)
+    Cloud.api(`transactions?person_id=eq.${me}&order=created_at.desc&select=*,owner:ledger_owner_id(email,display_name)`),
+    Cloud.api(`profiles?select=id,email,display_name&order=display_name`)
   ]);
+  ALL=ALL||[];TX=TX||[];PROFILES=PROFILES||[];
   const unseen=inboxTasks().filter(t=>t.status==="sent");
   for(const t of unseen){
     try{await Cloud.api(`cloud_tasks?id=eq.${t.id}`,{method:"PATCH",body:{status:"seen",updated_at:nowISO()},prefer:"return=minimal"});t.status="seen";}catch(e){}
@@ -246,8 +248,16 @@ function dashHTML(){
   const overdue=open.filter(t=>t.due_date&&t.due_date<tStr).sort((a,b)=>a.due_date.localeCompare(b.due_date));
   const today=open.filter(t=>t.due_date===tStr);
   const newIn=inboxTasks().filter(t=>["sent","seen"].includes(t.status));
+  const bal=balances();
+  const moneyChips=Object.keys(bal).map(c=>{const v=Math.round(bal[c]*100)/100;
+    return `<span class="mono" style="font-size:13px;color:${v<0?"var(--danger)":"var(--text)"}">${c} ${(v<0?"−":"")+Math.abs(v).toFixed(2)}${v<0?" owed to you":""}</span>`;}).join(" · ");
+  const moneyCard=`<div class="card" style="cursor:pointer" data-gotab="money">
+    <div class="row" style="justify-content:space-between">
+      <div><div class="eyebrow">Money</div>${Object.keys(bal).length?`<div style="margin-top:4px">${moneyChips}</div>`:`<div class="sub" style="margin-top:4px">No entries yet</div>`}</div>
+      <div style="text-align:right"><div class="eyebrow">Open tasks</div><div class="bal" style="font-size:21px">${open.length}</div></div>
+    </div></div>`;
   if(!overdue.length&&!today.length&&!newIn.length)
-    return `<div class="card" style="border-left:3px solid var(--ok)"><div class="eyebrow" style="color:var(--ok)">All clear</div><div class="sub" style="margin-top:4px">Nothing overdue and nothing due today.</div></div>`;
+    return `<div class="card" style="border-left:3px solid var(--ok)"><div class="eyebrow" style="color:var(--ok)">All clear</div><div class="sub" style="margin-top:4px">Nothing overdue and nothing due today.</div></div>`+moneyCard;
   const line=t=>`<div class="tx" style="cursor:pointer" data-goto="${esc(t.id)}"><div>${esc(t.title)}<div class="meta">${t.owner_id!==Cloud.me().id?"from "+esc(t.owner?.display_name||t.owner?.email||""):esc(t.category||"your task")}</div></div><div class="amt ${t.due_date&&t.due_date<tStr?"spend":""}">${t.due_date?esc(fmtD(t.due_date)):""}</div></div>`;
   return `<div class="card" style="border-left:3px solid ${overdue.length?"var(--danger)":"var(--accent)"}">
     <div class="row" style="gap:14px">
@@ -257,7 +267,7 @@ function dashHTML(){
     </div>
     ${overdue.length?`<div class="grouphead"><span class="eyebrow" style="color:var(--danger)">Overdue</span></div>${overdue.slice(0,6).map(line).join("")}`:""}
     ${today.length?`<div class="grouphead"><span class="eyebrow">Due today</span></div>${today.map(line).join("")}`:""}
-  </div>`;
+  </div>`+moneyCard;
 }
 function inboxHTML(){
   const items=inboxTasks();
@@ -377,6 +387,7 @@ function moneyHTML(){
       <div><label>Amount</label><input id="spAmt" type="number" min="0.01" step="0.01" inputmode="decimal"></div>
       <div><label>Currency</label><select id="spCur"><option>USD</option><option>GBP</option><option>ZWG</option><option>EUR</option><option>ZAR</option></select></div>
     </div>
+    <label>Whose money / who owes you</label><select id="spOwner">${spendOwnerOptions()}</select>
     <label>What it was for</label><input id="spDesc" placeholder="e.g. Irrigation fittings">
     <label>Related task (optional)</label><select id="spTask"><option value="">—</option>${openTasks.map(t=>`<option value="${esc(t.id)}">${esc(t.title)}</option>`).join("")}</select>
     <label>Receipt photo (optional)</label><input id="spFile" type="file" accept="image/*" capture="environment">
@@ -393,6 +404,13 @@ function moneyHTML(){
   </div>`;
 }
 
+function spendOwnerOptions(){
+  const me=Cloud.me().id;
+  const others=PROFILES.filter(p=>p.id!==me);
+  const lastFloat=TX.find(r=>r.type==="float");
+  const def=lastFloat?lastFloat.ledger_owner_id:(inboxTasks()[0]?inboxTasks()[0].owner_id:(others[0]&&others[0].id));
+  return others.map(p=>`<option value="${p.id}" ${p.id===def?"selected":""}>${esc(p.display_name||p.email)}</option>`).join("");
+}
 /* ---------- ACTIONS ---------- */
 async function patchTask(id,body){
   await Cloud.api(`cloud_tasks?id=eq.${id}`,{method:"PATCH",body:Object.assign({updated_at:nowISO()},body),prefer:"return=minimal"});
@@ -474,6 +492,7 @@ function bind(){
   const cn=$("#calNext"); if(cn)cn.onclick=()=>{CALM.m++;if(CALM.m>11){CALM.m=0;CALM.y++;}renderApp();};
   $$("#content .calcell").forEach(c=>c.onclick=()=>{CALSEL=CALSEL===c.dataset.day?null:c.dataset.day;renderApp();});
   $$("#content [data-goday]").forEach(r=>r.onclick=()=>{const d=r.dataset.goday;CALM={y:+d.slice(0,4),m:+d.slice(5,7)-1};CALSEL=d;renderApp();});
+  $$("#content [data-gotab]").forEach(c=>c.onclick=()=>{TAB=c.dataset.gotab;renderApp();});
   $$("#content [data-goto]").forEach(r=>r.onclick=()=>{
     const t=ALL.find(x=>x.id===r.dataset.goto); if(!t) return;
     TAB=(t.owner_id===Cloud.me().id&&t.assignee_id===Cloud.me().id)?"mine":"inbox";
@@ -489,8 +508,8 @@ async function recordSpend(){
   const sv=$("#spSave");
   const amt=parseFloat($("#spAmt").value);
   if(!amt||amt<=0){toast("Enter a valid amount");return;}
-  const owners=[...new Set(TX.map(r=>r.ledger_owner_id).concat(inboxTasks().map(t=>t.owner_id)))].filter(Boolean);
-  if(!owners.length){toast("No one has sent you a task or float yet — ask them to first");return;}
+  const ownerId=$("#spOwner")&&$("#spOwner").value;
+  if(!ownerId){toast("No other people have accounts yet — a spend needs someone to owe it");return;}
   sv.disabled=true;
   try{
     let receipt=null;
@@ -500,7 +519,7 @@ async function recordSpend(){
       receipt=await Cloud.upload(`${Cloud.me().id}/${safe}`,f);
     }
     await Cloud.api("transactions",{method:"POST",prefer:"return=minimal",body:{
-      ledger_owner_id:owners[0],person_id:Cloud.me().id,type:"spend",amount:amt,
+      ledger_owner_id:ownerId,person_id:Cloud.me().id,type:"spend",amount:amt,
       currency:$("#spCur").value,description:$("#spDesc").value.trim()||null,
       task_id:$("#spTask").value||null,receipt_path:receipt,created_by:Cloud.me().id}});
     toast("Spend recorded");await loadAll();
