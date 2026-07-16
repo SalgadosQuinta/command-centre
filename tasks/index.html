@@ -23,37 +23,41 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh}
-.wrap{max-width:640px;margin:0 auto;padding:16px 14px 90px}
+.wrap{max-width:680px;margin:0 auto;padding:14px 14px 92px}
 .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
-h1{font-size:19px;font-weight:650;margin:2px 0 2px}
-.sub{color:var(--muted);font-size:12.5px;margin-bottom:14px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
-label{display:block;font-size:11px;color:var(--muted);margin:10px 0 4px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase}
+h1{font-size:19px;font-weight:650;margin:2px 0}
+.sub{color:var(--muted);font-size:12.5px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px;margin-top:12px}
+label{display:block;font-size:10.5px;color:var(--muted);margin:9px 0 4px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase}
 input,select,textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:9px 10px;font-size:14px;font-family:var(--sans)}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
-.btn{display:inline-block;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:7px;padding:9px 14px;font-size:13px;cursor:pointer;font-family:var(--sans)}
+.btn{display:inline-block;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:7px;padding:9px 13px;font-size:13px;cursor:pointer;font-family:var(--sans)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#14110a;font-weight:650}
 .btn.sm{padding:6px 10px;font-size:12px}
 .btn.ghost{background:transparent}
 .btn.danger{border-color:var(--danger);color:var(--danger)}
 .btn:disabled{opacity:.5;cursor:default}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.pill{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;border:1px solid var(--line);border-radius:999px;padding:3px 9px;color:var(--muted)}
-.pill.sent{color:var(--accent);border-color:var(--accent)}
+.pill{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;border:1px solid var(--line);border-radius:999px;padding:3px 9px;color:var(--muted);white-space:nowrap}
+.pill.sent,.pill.open{color:var(--accent);border-color:var(--accent)}
 .pill.done{color:var(--ok);border-color:var(--ok)}
 .pill.in_progress,.pill.accepted{color:var(--warn);border-color:var(--warn)}
 .pill.declined{color:var(--danger);border-color:var(--danger)}
-.task{border-left:3px solid var(--line);padding-left:11px;margin-bottom:14px}
+.task{border-left:3px solid var(--line);padding-left:11px;margin:12px 0}
 .task.unseen{border-left-color:var(--accent)}
+.task.overdue{border-left-color:var(--danger)}
 .ttl{font-size:14.5px;font-weight:600}
-.meta{color:var(--faint);font-size:11.5px;font-family:var(--mono);margin:3px 0 6px}
-.notes{color:var(--muted);font-size:13px;white-space:pre-wrap;margin-bottom:8px}
+.ttl.donetxt{text-decoration:line-through;color:var(--faint)}
+.meta{color:var(--faint);font-size:11.5px;font-family:var(--mono);margin:3px 0 5px}
+.meta .od{color:var(--danger)}
+.notes{color:var(--muted);font-size:13px;white-space:pre-wrap;margin-bottom:7px}
 .comment{background:var(--panel2);border-radius:7px;padding:7px 10px;font-size:12.5px;margin-top:6px}
 .comment .who{font-family:var(--mono);font-size:10px;color:var(--faint)}
 .tabs{position:fixed;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid var(--line);display:flex;z-index:5}
-.tabs button{flex:1;background:none;border:none;color:var(--muted);padding:13px 0 max(13px,env(safe-area-inset-bottom));font-size:12px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+.tabs button{flex:1;background:none;border:none;color:var(--muted);padding:12px 0 max(12px,env(safe-area-inset-bottom));font-size:10.5px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
 .tabs button.on{color:var(--accent)}
-.bal{font-size:26px;font-weight:650;font-family:var(--mono)}
+.tabs .n{display:block;font-size:15px;margin-bottom:2px}
+.bal{font-size:25px;font-weight:650;font-family:var(--mono);margin-top:4px}
 .bal.neg{color:var(--danger)}
 .tx{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
 .tx:last-child{border-bottom:none}
@@ -62,18 +66,40 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
 .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--accent);border-radius:8px;padding:9px 16px;font-size:13px;z-index:20;max-width:90vw}
 .hidden{display:none!important}
 a{color:var(--accent)}
-.empty{color:var(--faint);text-align:center;padding:26px 0;font-size:13px}
-.topline{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px}
+.empty{color:var(--faint);text-align:center;padding:24px 0;font-size:13px}
+.topline{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.grouphead{margin:14px 0 2px}
+.qadd{display:flex;gap:8px;margin-top:10px}
+.qadd input{flex:1}
+.badge{font-family:var(--mono);font-size:10px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted)}
+/* calendar */
+.calhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.calhead b{font-size:14.5px}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.caldow{font-family:var(--mono);font-size:9.5px;color:var(--faint);text-align:center;text-transform:uppercase;padding:3px 0}
+.calcell{background:var(--panel2);border:1px solid var(--line);border-radius:6px;min-height:44px;padding:3px 4px;font-size:11px;cursor:pointer;position:relative}
+.calcell.out{opacity:.35}
+.calcell.today{border-color:var(--accent)}
+.calcell.sel{outline:2px solid var(--accent)}
+.calcell .dn{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.dots{display:flex;gap:2px;flex-wrap:wrap;margin-top:3px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.dot.mine{background:var(--muted)}
+.dot.od{background:var(--danger)}
+.fieldrow{display:flex;gap:8px}
+.fieldrow>*{flex:1}
+details.newtask summary{cursor:pointer;font-size:13px;color:var(--accent);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;font-size:11px;list-style:none;padding:2px 0}
+details.newtask summary::-webkit-details-marker{display:none}
 </style>
 </head>
 <body>
 <div class="wrap">
   <!-- SIGN IN -->
   <div id="authView">
-    <div style="margin:26px 0 18px;text-align:center">
+    <div style="margin:26px 0 4px;text-align:center">
       <div class="eyebrow">Command Centre</div>
       <h1>Tasks</h1>
-      <div class="sub">Sign in to see tasks sent to you and record spending.</div>
+      <div class="sub" style="margin-bottom:14px">Your tasks, calendar and money — in one place.</div>
     </div>
     <div class="card">
       <label>Email</label><input id="aEmail" type="email" autocomplete="username">
@@ -88,18 +114,18 @@ a{color:var(--accent)}
   <!-- APP -->
   <div id="appView" class="hidden">
     <div class="topline">
-      <div><div class="eyebrow">Command Centre</div><h1 id="viewTitle">Tasks</h1></div>
+      <div><div class="eyebrow">Command Centre</div><h1 id="viewTitle">Inbox</h1><div class="sub" id="whoLine"></div></div>
       <div class="row"><button class="btn sm" id="refreshBtn">Refresh</button><button class="btn sm ghost" id="outBtn">Sign out</button></div>
     </div>
-    <div class="sub" id="whoLine"></div>
-    <div id="tasksTab"></div>
-    <div id="moneyTab" class="hidden"></div>
+    <div id="content"></div>
   </div>
 </div>
 
 <div class="tabs hidden" id="tabs">
-  <button data-tab="tasks" class="on">Tasks</button>
-  <button data-tab="money">Money</button>
+  <button data-tab="inbox" class="on"><span class="n">▤</span>Inbox</button>
+  <button data-tab="mine"><span class="n">✓</span>My tasks</button>
+  <button data-tab="calendar"><span class="n">▦</span>Calendar</button>
+  <button data-tab="money"><span class="n">$</span>Money</button>
 </div>
 
 <script>
@@ -108,6 +134,8 @@ const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function toast(m){const t=document.createElement("div");t.className="toast";t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),3200);}
 const fmtD=s=>{if(!s)return "";const d=new Date(s);return d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});};
+const todayStr=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");};
+const nowISO=()=>new Date().toISOString();
 
 const Cloud={
   session:null,
@@ -146,18 +174,22 @@ const Cloud={
 };
 Cloud.load();
 
-let TASKS=[],TX=[],TAB="tasks";
+let ALL=[],TX=[],TAB="inbox",CALM=null,CALSEL=null,SHOWDONE=false;
+
+const inboxTasks=()=>ALL.filter(t=>t.assignee_id===Cloud.me().id&&t.owner_id!==Cloud.me().id);
+const myTasks=()=>ALL.filter(t=>t.owner_id===Cloud.me().id&&t.assignee_id===Cloud.me().id);
+const isClosed=t=>["done","declined"].includes(t.status);
+const isOver=t=>t.due_date&&!isClosed(t)&&t.due_date<todayStr();
 
 async function loadAll(){
   const me=Cloud.me().id;
-  [TASKS,TX]=await Promise.all([
-    Cloud.api(`cloud_tasks?assignee_id=eq.${me}&order=created_at.desc&select=*,owner:owner_id(email,display_name)`),
+  [ALL,TX]=await Promise.all([
+    Cloud.api(`cloud_tasks?or=(assignee_id.eq.${me},owner_id.eq.${me})&order=created_at.desc&select=*,owner:owner_id(email,display_name)`),
     Cloud.api(`transactions?person_id=eq.${me}&order=created_at.desc&select=*,owner:ledger_owner_id(email,display_name)`)
   ]);
-  // mark newly received tasks as seen
-  const unseen=TASKS.filter(t=>t.status==="sent");
+  const unseen=inboxTasks().filter(t=>t.status==="sent");
   for(const t of unseen){
-    try{await Cloud.api(`cloud_tasks?id=eq.${t.id}`,{method:"PATCH",body:{status:"seen",updated_at:new Date().toISOString()},prefer:"return=minimal"});t.status="seen";}catch(e){}
+    try{await Cloud.api(`cloud_tasks?id=eq.${t.id}`,{method:"PATCH",body:{status:"seen",updated_at:nowISO()},prefer:"return=minimal"});t.status="seen";}catch(e){}
   }
   renderApp();
 }
@@ -167,113 +199,231 @@ function balances(){
   TX.forEach(r=>{const c=r.currency||"USD";by[c]=(by[c]||0)+(r.type==="float"?1:-1)*parseFloat(r.amount);});
   return by;
 }
+const categories=()=>[...new Set(myTasks().map(t=>t.category).filter(Boolean))].sort();
 
 function renderApp(){
   $("#whoLine").textContent="Signed in as "+Cloud.me().email;
-  $("#viewTitle").textContent=TAB==="tasks"?"Tasks":"Money";
-  $("#tasksTab").classList.toggle("hidden",TAB!=="tasks");
-  $("#moneyTab").classList.toggle("hidden",TAB!=="money");
+  $("#viewTitle").textContent={inbox:"Inbox",mine:"My tasks",calendar:"Calendar",money:"Money"}[TAB];
   $$(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.tab===TAB));
-
-  const open=TASKS.filter(t=>!["done","declined"].includes(t.status));
-  const closed=TASKS.filter(t=>["done","declined"].includes(t.status));
-  $("#tasksTab").innerHTML = (TASKS.length?"":`<div class="card"><div class="empty">Nothing in your inbox yet.</div></div>`)
-    + (open.length?`<div class="card">${open.map(taskHTML).join("")}</div>`:"")
-    + (closed.length?`<div class="eyebrow" style="display:block;margin:14px 0 6px">Completed</div><div class="card" style="opacity:.75">${closed.map(taskHTML).join("")}</div>`:"");
-  bindTasks();
-
-  const bal=balances();
-  $("#moneyTab").innerHTML=`
-    <div class="card">
-      <div class="eyebrow">Balance you hold</div>
-      ${Object.keys(bal).length?Object.keys(bal).map(c=>{const v=Math.round(bal[c]*100)/100;
-        return `<div class="bal ${v<0?"neg":""}">${esc(c)} ${(v<0?"−":"")+Math.abs(v).toFixed(2)}</div>
-        <div class="sub">${v<0?"Spent more than received — this amount is owed to you.":v>0?"Money received that is not yet spent.":"All square."}</div>`;}).join("")
-      :`<div class="sub" style="margin-top:6px">No money entries yet.</div>`}
-    </div>
-    <div class="card">
-      <div class="eyebrow">Record spending</div>
-      <label>Amount</label><input id="spAmt" type="number" min="0.01" step="0.01" inputmode="decimal">
-      <label>Currency</label><select id="spCur"><option>USD</option><option>GBP</option><option>ZWG</option><option>EUR</option><option>ZAR</option></select>
-      <label>What it was for</label><input id="spDesc" placeholder="e.g. Irrigation fittings">
-      <label>Related task (optional)</label><select id="spTask"><option value="">—</option>${TASKS.map(t=>`<option value="${esc(t.id)}">${esc(t.title)}</option>`).join("")}</select>
-      <label>Receipt photo (optional)</label><input id="spFile" type="file" accept="image/*" capture="environment">
-      <div class="row" style="margin-top:14px"><button class="btn primary" id="spSave">Record spend</button></div>
-    </div>
-    <div class="card">
-      <div class="eyebrow">History</div>
-      ${TX.length?TX.map(r=>`<div class="tx">
-        <div><div>${r.type==="float"?"Received":"Spent"}${r.description?" — "+esc(r.description):""}</div>
-        <div class="meta">${esc(fmtD(r.created_at))}${r.receipt_path?` · <a href="#" data-receipt="${esc(r.receipt_path)}">receipt</a>`:""}</div></div>
-        <div class="amt ${r.type==="spend"?"spend":""}">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</div>
-      </div>`).join(""):`<div class="empty">No entries yet.</div>`}
-    </div>`;
-  bindMoney();
+  const c=$("#content");
+  if(TAB==="inbox")c.innerHTML=inboxHTML();
+  else if(TAB==="mine")c.innerHTML=mineHTML();
+  else if(TAB==="calendar")c.innerHTML=calHTML();
+  else c.innerHTML=moneyHTML();
+  bind();
 }
 
-function taskHTML(t){
+/* ---------- INBOX (tasks sent to me) ---------- */
+function inboxHTML(){
+  const items=inboxTasks();
+  const open=items.filter(t=>!isClosed(t)), closed=items.filter(isClosed);
+  return (items.length?"":`<div class="card"><div class="empty">Nothing in your inbox yet. Tasks other people send you will appear here.</div></div>`)
+    +(open.length?`<div class="card">${open.map(t=>taskHTML(t,false)).join("")}</div>`:"")
+    +(closed.length?`<div class="grouphead"><span class="eyebrow">Completed</span></div><div class="card" style="opacity:.75">${closed.map(t=>taskHTML(t,false)).join("")}</div>`:"");
+}
+
+/* ---------- MY TASKS (self-created, categorised) ---------- */
+function mineHTML(){
+  const items=myTasks();
+  const open=items.filter(t=>!isClosed(t)), done=items.filter(isClosed);
+  const cats=categories();
+  const byCat={};
+  open.forEach(t=>{const k=t.category||"General";(byCat[k]=byCat[k]||[]).push(t);});
+  return `
+  <div class="card">
+    <div class="qadd"><input id="qTitle" placeholder="Add a task and press Enter…"><button class="btn primary" id="qAdd">Add</button></div>
+    <details class="newtask" style="margin-top:9px"><summary>More options ▾</summary>
+      <div class="fieldrow">
+        <div><label>Category</label><input id="qCat" list="catList" placeholder="e.g. Farm"><datalist id="catList">${cats.map(x=>`<option value="${esc(x)}">`).join("")}</datalist></div>
+        <div><label>Due date</label><input id="qDue" type="date"></div>
+      </div>
+      <div class="fieldrow">
+        <div><label>Priority</label><select id="qPrio"><option value="normal">Normal</option><option value="high">High</option><option value="low">Low</option></select></div>
+        <div><label>Notes</label><input id="qNotes" placeholder="Optional"></div>
+      </div>
+    </details>
+  </div>
+  ${open.length?Object.keys(byCat).sort().map(k=>`
+    <div class="grouphead"><span class="eyebrow">${esc(k)}</span> <span class="badge">${byCat[k].length}</span></div>
+    <div class="card" style="margin-top:4px">${byCat[k].map(t=>taskHTML(t,true)).join("")}</div>`).join("")
+  :`<div class="card"><div class="empty">No tasks of your own yet — add one above.</div></div>`}
+  ${done.length?`<div class="grouphead" style="display:flex;justify-content:space-between;align-items:center"><span class="eyebrow">Completed (${done.length})</span><button class="btn sm ghost" id="toggleDone">${SHOWDONE?"Hide":"Show"}</button></div>
+    ${SHOWDONE?`<div class="card" style="opacity:.7">${done.map(t=>taskHTML(t,true)).join("")}</div>`:""}`:""}`;
+}
+
+function taskHTML(t,mine){
   const comments=(t.comments||[]);
-  return `<div class="task ${t.status==="sent"?"unseen":""}" data-id="${esc(t.id)}">
+  const over=isOver(t);
+  return `<div class="task ${t.status==="sent"?"unseen":""} ${over?"overdue":""}" data-id="${esc(t.id)}">
     <div class="row" style="justify-content:space-between">
-      <div class="ttl">${esc(t.title)}</div>
+      <div class="ttl ${isClosed(t)?"donetxt":""}">${esc(t.title)}</div>
       <span class="pill ${esc(t.status)}">${esc(t.status.replace("_"," "))}</span>
     </div>
-    <div class="meta">From ${esc(t.owner?.display_name||t.owner?.email||"")}${t.due_date?` · due ${esc(fmtD(t.due_date))}`:""}${t.priority&&t.priority!=="normal"?` · ${esc(t.priority)}`:""}</div>
+    <div class="meta">${mine?(t.category?esc(t.category):""):"From "+esc(t.owner?.display_name||t.owner?.email||"")}${t.due_date?` · <span class="${over?"od":""}">due ${esc(fmtD(t.due_date))}${over?" · overdue":""}</span>`:""}${t.priority&&t.priority!=="normal"?` · ${esc(t.priority)}`:""}</div>
     ${t.notes?`<div class="notes">${esc(t.notes)}</div>`:""}
     ${comments.map(c=>`<div class="comment"><div class="who">${esc(c.who)} · ${esc(fmtD(c.at))}</div>${esc(c.text)}</div>`).join("")}
-    ${["done","declined"].includes(t.status)?"":`
-    <div class="row" style="margin-top:8px">
-      ${t.status==="seen"||t.status==="sent"?`<button class="btn sm" data-act="accepted" data-id="${esc(t.id)}">Accept</button>`:""}
-      ${["seen","sent","accepted"].includes(t.status)?`<button class="btn sm" data-act="in_progress" data-id="${esc(t.id)}">Start</button>`:""}
-      <button class="btn sm primary" data-act="done" data-id="${esc(t.id)}">Done</button>
-      <button class="btn sm ghost" data-comment="${esc(t.id)}">Comment</button>
-      ${["seen","sent"].includes(t.status)?`<button class="btn sm ghost danger" data-act="declined" data-id="${esc(t.id)}">Decline</button>`:""}
-    </div>`}
+    <div class="row" style="margin-top:7px">
+    ${isClosed(t)
+      ?(mine?`<button class="btn sm ghost" data-reopen="${esc(t.id)}">Reopen</button> <button class="btn sm ghost danger" data-del="${esc(t.id)}">Delete</button>`:"")
+      :mine
+        ?`<button class="btn sm primary" data-act="done" data-id="${esc(t.id)}">Done</button>
+          <button class="btn sm" data-edit="${esc(t.id)}">Edit</button>
+          <button class="btn sm ghost danger" data-del="${esc(t.id)}">Delete</button>`
+        :`${["seen","sent"].includes(t.status)?`<button class="btn sm" data-act="accepted" data-id="${esc(t.id)}">Accept</button>`:""}
+          ${["seen","sent","accepted"].includes(t.status)?`<button class="btn sm" data-act="in_progress" data-id="${esc(t.id)}">Start</button>`:""}
+          <button class="btn sm primary" data-act="done" data-id="${esc(t.id)}">Done</button>
+          <button class="btn sm ghost" data-comment="${esc(t.id)}">Comment</button>
+          ${["seen","sent"].includes(t.status)?`<button class="btn sm ghost danger" data-act="declined" data-id="${esc(t.id)}">Decline</button>`:""}`}
+    </div>
   </div>`;
 }
 
-function bindTasks(){
-  $$("#tasksTab [data-act]").forEach(b=>b.onclick=async()=>{
-    const patch={status:b.dataset.act,updated_at:new Date().toISOString()};
-    if(b.dataset.act==="done")patch.completed_at=new Date().toISOString();
-    try{await Cloud.api(`cloud_tasks?id=eq.${b.dataset.id}`,{method:"PATCH",body:patch,prefer:"return=minimal"});
-      const t=TASKS.find(x=>x.id===b.dataset.id);t.status=b.dataset.act;renderApp();toast(b.dataset.act==="done"?"Marked done":"Updated");}
-    catch(e){toast(e.message);}
-  });
-  $$("#tasksTab [data-comment]").forEach(b=>b.onclick=async()=>{
-    const text=prompt("Comment:");if(!text)return;
-    const t=TASKS.find(x=>x.id===b.dataset.comment);
-    const comments=(t.comments||[]).concat([{who:Cloud.me().email,text:text,at:new Date().toISOString()}]);
-    try{await Cloud.api(`cloud_tasks?id=eq.${t.id}`,{method:"PATCH",body:{comments:comments,updated_at:new Date().toISOString()},prefer:"return=minimal"});
-      t.comments=comments;renderApp();toast("Comment added");}
-    catch(e){toast(e.message);}
-  });
+/* ---------- CALENDAR ---------- */
+function calHTML(){
+  if(!CALM){const d=new Date();CALM={y:d.getFullYear(),m:d.getMonth()};}
+  const {y,m}=CALM;
+  const first=new Date(y,m,1);
+  const startDow=(first.getDay()+6)%7; // Monday first
+  const start=new Date(y,m,1-startDow);
+  const monthName=first.toLocaleDateString("en-GB",{month:"long",year:"numeric"});
+  const tasksByDate={};
+  ALL.forEach(t=>{if(t.due_date&&!["declined"].includes(t.status)){(tasksByDate[t.due_date]=tasksByDate[t.due_date]||[]).push(t);}});
+  const tStr=todayStr();
+  let cells="";
+  for(let i=0;i<42;i++){
+    const d=new Date(start); d.setDate(start.getDate()+i);
+    const ds=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    const its=tasksByDate[ds]||[];
+    cells+=`<div class="calcell ${d.getMonth()!==m?"out":""} ${ds===tStr?"today":""} ${ds===CALSEL?"sel":""}" data-day="${ds}">
+      <div class="dn">${d.getDate()}</div>
+      <div class="dots">${its.slice(0,6).map(t=>`<span class="dot ${t.owner_id===Cloud.me().id&&t.assignee_id===Cloud.me().id?"mine":""} ${isOver(t)?"od":""}"></span>`).join("")}</div>
+    </div>`;
+  }
+  const sel=CALSEL&&tasksByDate[CALSEL]?tasksByDate[CALSEL]:null;
+  const upcoming=ALL.filter(t=>t.due_date&&!isClosed(t)).sort((a,b)=>a.due_date.localeCompare(b.due_date)).slice(0,12);
+  return `
+  <div class="card">
+    <div class="calhead"><button class="btn sm" id="calPrev">‹</button><b>${esc(monthName)}</b><button class="btn sm" id="calNext">›</button></div>
+    <div class="calgrid">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>`<div class="caldow">${d}</div>`).join("")}${cells}</div>
+    <div class="sub" style="margin-top:8px"><span class="dot" style="display:inline-block"></span> sent to you &nbsp; <span class="dot mine" style="display:inline-block"></span> your own &nbsp; <span class="dot od" style="display:inline-block"></span> overdue</div>
+  </div>
+  ${sel?`<div class="grouphead"><span class="eyebrow">${esc(fmtD(CALSEL))}</span></div><div class="card" style="margin-top:4px">${sel.map(t=>taskHTML(t,t.owner_id===Cloud.me().id&&t.assignee_id===Cloud.me().id)).join("")}</div>`:""}
+  <div class="grouphead"><span class="eyebrow">Upcoming</span></div>
+  <div class="card" style="margin-top:4px">${upcoming.length?upcoming.map(t=>`<div class="tx" style="cursor:pointer" data-goday="${esc(t.due_date)}"><div>${esc(t.title)}<div class="meta">${t.owner_id!==Cloud.me().id||t.assignee_id!==Cloud.me().id?"sent to you":esc(t.category||"your task")}</div></div><div class="amt ${isOver(t)?"spend":""}">${esc(fmtD(t.due_date))}</div></div>`).join(""):`<div class="empty">Nothing scheduled.</div>`}</div>`;
 }
 
-function bindMoney(){
-  $$("#moneyTab [data-receipt]").forEach(a=>a.onclick=async(e)=>{e.preventDefault();try{window.open(await Cloud.signedUrl(a.dataset.receipt),"_blank");}catch(err){toast(err.message);}});
-  const sv=$("#spSave");if(!sv)return;
-  sv.onclick=async()=>{
-    const amt=parseFloat($("#spAmt").value);
-    if(!amt||amt<=0){toast("Enter a valid amount");return;}
-    const owners=[...new Set(TX.map(r=>r.ledger_owner_id).concat(TASKS.map(t=>t.owner_id)))].filter(Boolean);
-    if(!owners.length){toast("No one has sent you a task or float yet — ask them to first");return;}
-    sv.disabled=true;
-    try{
-      let receipt=null;
-      const f=$("#spFile").files[0];
-      if(f){
-        const safe=Date.now()+"-"+f.name.replace(/[^a-zA-Z0-9.\-_]/g,"_");
-        receipt=await Cloud.upload(`${Cloud.me().id}/${safe}`,f);
-      }
-      await Cloud.api("transactions",{method:"POST",prefer:"return=minimal",body:{
-        ledger_owner_id:owners[0],person_id:Cloud.me().id,type:"spend",amount:amt,
-        currency:$("#spCur").value,description:$("#spDesc").value.trim()||null,
-        task_id:$("#spTask").value||null,receipt_path:receipt,created_by:Cloud.me().id}});
-      toast("Spend recorded");await loadAll();
-    }catch(e){toast(e.message);}
-    sv.disabled=false;
-  };
+/* ---------- MONEY ---------- */
+function moneyHTML(){
+  const bal=balances();
+  const openTasks=ALL.filter(t=>!isClosed(t));
+  return `
+  <div class="card">
+    <div class="eyebrow">Balance you hold</div>
+    ${Object.keys(bal).length?Object.keys(bal).map(c=>{const v=Math.round(bal[c]*100)/100;
+      return `<div class="bal ${v<0?"neg":""}">${esc(c)} ${(v<0?"−":"")+Math.abs(v).toFixed(2)}</div>
+      <div class="sub">${v<0?"Spent more than received — this amount is owed to you.":v>0?"Money received that is not yet spent.":"All square."}</div>`;}).join("")
+    :`<div class="sub" style="margin-top:6px">No money entries yet. When someone gives you a float it will show here.</div>`}
+  </div>
+  <div class="card">
+    <div class="eyebrow">Record spending</div>
+    <div class="fieldrow">
+      <div><label>Amount</label><input id="spAmt" type="number" min="0.01" step="0.01" inputmode="decimal"></div>
+      <div><label>Currency</label><select id="spCur"><option>USD</option><option>GBP</option><option>ZWG</option><option>EUR</option><option>ZAR</option></select></div>
+    </div>
+    <label>What it was for</label><input id="spDesc" placeholder="e.g. Irrigation fittings">
+    <label>Related task (optional)</label><select id="spTask"><option value="">—</option>${openTasks.map(t=>`<option value="${esc(t.id)}">${esc(t.title)}</option>`).join("")}</select>
+    <label>Receipt photo (optional)</label><input id="spFile" type="file" accept="image/*" capture="environment">
+    <div class="row" style="margin-top:12px"><button class="btn primary" id="spSave">Record spend</button></div>
+  </div>
+  <div class="card">
+    <div class="eyebrow">History</div>
+    ${TX.length?TX.map(r=>`<div class="tx">
+      <div><div>${r.type==="float"?"Received from "+esc(r.owner?.display_name||r.owner?.email||""):"Spent"}${r.description?" — "+esc(r.description):""}</div>
+      <div class="meta">${esc(fmtD(r.created_at))}${r.receipt_path?` · <a href="#" data-receipt="${esc(r.receipt_path)}">receipt</a>`:""}</div></div>
+      <div class="amt ${r.type==="spend"?"spend":""}">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</div>
+    </div>`).join(""):`<div class="empty">No entries yet.</div>`}
+  </div>`;
+}
+
+/* ---------- ACTIONS ---------- */
+async function patchTask(id,body){
+  await Cloud.api(`cloud_tasks?id=eq.${id}`,{method:"PATCH",body:Object.assign({updated_at:nowISO()},body),prefer:"return=minimal"});
+  const t=ALL.find(x=>x.id===id); Object.assign(t,body);
+}
+async function addMine(){
+  const title=$("#qTitle").value.trim(); if(!title){toast("Type a task first");return;}
+  const me=Cloud.me().id;
+  try{
+    const rows=await Cloud.api("cloud_tasks",{method:"POST",body:{
+      owner_id:me,assignee_id:me,title:title,status:"open",
+      category:$("#qCat")?.value.trim()||null,due_date:$("#qDue")?.value||null,
+      priority:$("#qPrio")?.value||"normal",notes:$("#qNotes")?.value.trim()||null}});
+    ALL.unshift(Object.assign(rows[0],{owner:{email:Cloud.me().email}}));
+    renderApp(); toast("Task added");
+    const q=$("#qTitle"); if(q){q.value="";q.focus();}
+  }catch(e){
+    if(String(e.message).includes("category")||String(e.message).includes("status"))
+      toast("Run the migration-002 script in Supabase SQL Editor first");
+    else toast(e.message);
+  }
+}
+function editMine(t){
+  const title=prompt("Task title:",t.title); if(title===null)return;
+  const category=prompt("Category:",t.category||""); if(category===null)return;
+  const due=prompt("Due date (YYYY-MM-DD, blank for none):",t.due_date||""); if(due===null)return;
+  patchTask(t.id,{title:title.trim()||t.title,category:category.trim()||null,due_date:due.trim()||null})
+    .then(()=>{renderApp();toast("Updated");}).catch(e=>toast(e.message));
+}
+
+function bind(){
+  $$("#content [data-act]").forEach(b=>b.onclick=async()=>{
+    const body={status:b.dataset.act}; if(b.dataset.act==="done")body.completed_at=nowISO();
+    try{await patchTask(b.dataset.id,body);renderApp();toast(b.dataset.act==="done"?"Marked done":"Updated");}catch(e){toast(e.message);}
+  });
+  $$("#content [data-reopen]").forEach(b=>b.onclick=async()=>{try{await patchTask(b.dataset.reopen,{status:"open",completed_at:null});renderApp();}catch(e){toast(e.message);}});
+  $$("#content [data-del]").forEach(b=>b.onclick=async()=>{
+    if(!confirm("Delete this task permanently?"))return;
+    try{await Cloud.api(`cloud_tasks?id=eq.${b.dataset.del}`,{method:"DELETE",prefer:"return=minimal"});
+      ALL=ALL.filter(t=>t.id!==b.dataset.del);renderApp();toast("Deleted");}catch(e){toast(e.message);}
+  });
+  $$("#content [data-edit]").forEach(b=>b.onclick=()=>{const t=ALL.find(x=>x.id===b.dataset.edit);if(t)editMine(t);});
+  $$("#content [data-comment]").forEach(b=>b.onclick=async()=>{
+    const text=prompt("Comment:");if(!text)return;
+    const t=ALL.find(x=>x.id===b.dataset.comment);
+    const comments=(t.comments||[]).concat([{who:Cloud.me().email,text:text,at:nowISO()}]);
+    try{await patchTask(t.id,{comments:comments});renderApp();toast("Comment added");}catch(e){toast(e.message);}
+  });
+  const qa=$("#qAdd"); if(qa){qa.onclick=addMine; $("#qTitle").addEventListener("keydown",e=>{if(e.key==="Enter")addMine();});}
+  const td=$("#toggleDone"); if(td)td.onclick=()=>{SHOWDONE=!SHOWDONE;renderApp();};
+  const cp=$("#calPrev"); if(cp)cp.onclick=()=>{CALM.m--;if(CALM.m<0){CALM.m=11;CALM.y--;}renderApp();};
+  const cn=$("#calNext"); if(cn)cn.onclick=()=>{CALM.m++;if(CALM.m>11){CALM.m=0;CALM.y++;}renderApp();};
+  $$("#content .calcell").forEach(c=>c.onclick=()=>{CALSEL=CALSEL===c.dataset.day?null:c.dataset.day;renderApp();});
+  $$("#content [data-goday]").forEach(r=>r.onclick=()=>{const d=r.dataset.goday;CALM={y:+d.slice(0,4),m:+d.slice(5,7)-1};CALSEL=d;renderApp();});
+  $$("#content [data-receipt]").forEach(a=>a.onclick=async(e)=>{e.preventDefault();try{window.open(await Cloud.signedUrl(a.dataset.receipt),"_blank");}catch(err){toast(err.message);}});
+  const sv=$("#spSave"); if(sv)sv.onclick=recordSpend;
+}
+
+async function recordSpend(){
+  const sv=$("#spSave");
+  const amt=parseFloat($("#spAmt").value);
+  if(!amt||amt<=0){toast("Enter a valid amount");return;}
+  const owners=[...new Set(TX.map(r=>r.ledger_owner_id).concat(inboxTasks().map(t=>t.owner_id)))].filter(Boolean);
+  if(!owners.length){toast("No one has sent you a task or float yet — ask them to first");return;}
+  sv.disabled=true;
+  try{
+    let receipt=null;
+    const f=$("#spFile").files[0];
+    if(f){
+      const safe=Date.now()+"-"+f.name.replace(/[^a-zA-Z0-9.\-_]/g,"_");
+      receipt=await Cloud.upload(`${Cloud.me().id}/${safe}`,f);
+    }
+    await Cloud.api("transactions",{method:"POST",prefer:"return=minimal",body:{
+      ledger_owner_id:owners[0],person_id:Cloud.me().id,type:"spend",amount:amt,
+      currency:$("#spCur").value,description:$("#spDesc").value.trim()||null,
+      task_id:$("#spTask").value||null,receipt_path:receipt,created_by:Cloud.me().id}});
+    toast("Spend recorded");await loadAll();
+  }catch(e){toast(e.message);}
+  sv.disabled=false;
 }
 
 function show(signedIn){
@@ -283,8 +433,8 @@ function show(signedIn){
 }
 
 document.addEventListener("DOMContentLoaded",()=>{
-  $("#aIn").onclick=async()=>{try{await Cloud.signIn($("#aEmail").value.trim(),$("#aPass").value);show(true);loadAll();}catch(e){toast(e.message);}};
-  $("#aUp").onclick=async()=>{try{const ok=await Cloud.signUp($("#aEmail").value.trim(),$("#aPass").value);if(ok){show(true);loadAll();}else toast("Account created — check your email to confirm, then sign in");}catch(e){toast(e.message);}};
+  $("#aIn").onclick=async()=>{try{await Cloud.signIn($("#aEmail").value.trim(),$("#aPass").value);show(true);loadAll().catch(e=>toast(e.message));}catch(e){toast(e.message);}};
+  $("#aUp").onclick=async()=>{try{const ok=await Cloud.signUp($("#aEmail").value.trim(),$("#aPass").value);if(ok){show(true);loadAll().catch(e=>toast(e.message));}else toast("Account created — check your email to confirm, then sign in");}catch(e){toast(e.message);}};
   $("#outBtn").onclick=()=>{Cloud.store(null);show(false);};
   $("#refreshBtn").onclick=()=>loadAll().then(()=>toast("Refreshed")).catch(e=>toast(e.message));
   $$(".tabs button").forEach(b=>b.onclick=()=>{TAB=b.dataset.tab;renderApp();});
