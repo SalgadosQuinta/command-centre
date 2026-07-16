@@ -320,6 +320,7 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
     <button class="navbtn" title="Anything needing more than one action — each must have a next action" data-view="projects"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Projects<span class="cnt" id="cntProjects"></span></button>
     <button class="navbtn" title="Everything delegated or owed to you, with follow-ups" data-view="waiting"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Waiting for<span class="cnt" id="cntWaiting"></span></button>
     <button class="navbtn" title="Per-person view: their tasks and the money position" data-view="people"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5 5 0 0 1 6 4.5"/></svg>People</button>
+    <button class="navbtn" title="Expected revenue and payments to make — your 30/60 day money picture" data-view="finance"><svg viewBox="0 0 24 24"><path d="M12 2v20M17 6.5C17 4.6 14.8 3 12 3S7 4.6 7 6.5 9.2 10 12 10s5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5"/></svg>Finance</button>
     <button class="navbtn" title="Ideas you are not committing to yet — reviewed weekly" data-view="someday"><svg viewBox="0 0 24 24"><path d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/></svg>Someday / Maybe<span class="cnt" id="cntSomeday"></span></button>
     <button class="navbtn" title="Information you want to keep but never act on" data-view="reference"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4H6.5A2.5 2.5 0 0 0 4 6.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>Reference</button>
     <button class="navbtn" title="Thinking space — meeting notes, ideas, anything that is not a task" data-view="notes"><svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>Notes</button>
@@ -1968,6 +1969,182 @@ function healthTableHTML(){
   </tbody></table>`;
 }
 
+/* ---------------- FINANCE ---------------- */
+const FinanceService = {
+  data(){ const d=AppState.data; d.finance=d.finance||{income:[],outgoings:[]}; d.finance.income=d.finance.income||[]; d.finance.outgoings=d.finance.outgoings||[]; return d.finance; },
+  addIncome(x){ const n=Object.assign({id:uid("inc"),name:"",client:"",amount:0,currency:"USD",expectedDate:todayStr(),status:"expected",recurring:"none",notes:"",createdAt:nowISO()},x); this.data().income.unshift(n); markDirty(); return n; },
+  addOutgoing(x){ const n=Object.assign({id:uid("out"),name:"",amount:0,currency:"USD",dueDate:todayStr(),recurring:"none",category:"",notes:"",paidHistory:[],createdAt:nowISO()},x); this.data().outgoings.unshift(n); markDirty(); return n; },
+  get(kind,id){ return this.data()[kind].find(x=>x.id===id); },
+  update(kind,id,patch){ const x=this.get(kind,id); if(x){ Object.assign(x,patch); markDirty(); } },
+  remove(kind,id){ const a=this.data()[kind]; const i=a.findIndex(x=>x.id===id); if(i>=0){ a.splice(i,1); markDirty(); } },
+  nextDate(dateStr,recurring){
+    const d=new Date(dateStr+"T00:00:00");
+    if(recurring==="weekly") d.setDate(d.getDate()+7);
+    else if(recurring==="monthly") d.setMonth(d.getMonth()+1);
+    else if(recurring==="quarterly") d.setMonth(d.getMonth()+3);
+    else if(recurring==="annually") d.setFullYear(d.getFullYear()+1);
+    else return null;
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  },
+  markPaid(id){
+    const x=this.get("outgoings",id); if(!x) return;
+    (x.paidHistory=x.paidHistory||[]).push({date:x.dueDate,paidOn:todayStr(),amount:x.amount,currency:x.currency});
+    const nd=this.nextDate(x.dueDate,x.recurring);
+    if(nd) x.dueDate=nd; else x.paid=true;
+    markDirty();
+  },
+  markReceived(id){
+    const x=this.get("income",id); if(!x) return;
+    if(x.recurring&&x.recurring!=="none"){
+      (x.receivedHistory=x.receivedHistory||[]).push({date:x.expectedDate,receivedOn:todayStr(),amount:x.amount,currency:x.currency});
+      x.expectedDate=this.nextDate(x.expectedDate,x.recurring);
+    } else { x.status="received"; x.receivedOn=todayStr(); }
+    markDirty();
+  },
+  // sums within [today, today+days), per currency
+  expectedIn(days){
+    const from=todayStr(); const to=addDays(from,days);
+    const out={};
+    this.data().income.forEach(x=>{
+      if(x.status==="received") return;
+      let d=x.expectedDate, guard=0;
+      while(d&&d<to&&guard++<24){
+        if(d>=from){ out[x.currency]=(out[x.currency]||0)+parseFloat(x.amount||0); }
+        if(x.recurring&&x.recurring!=="none") d=this.nextDate(d,x.recurring); else d=null;
+      }
+    });
+    return out;
+  },
+  committedOut(days){
+    const from=todayStr(); const to=addDays(from,days);
+    const out={};
+    this.data().outgoings.forEach(x=>{
+      if(x.paid) return;
+      let d=x.dueDate, guard=0;
+      while(d&&d<to&&guard++<24){
+        if(d>=from||d<from){ out[x.currency]=(out[x.currency]||0)+parseFloat(x.amount||0); } // overdue counts too
+        if(x.recurring&&x.recurring!=="none"){ d=this.nextDate(d,x.recurring); if(d>=to) break; } else d=null;
+      }
+    });
+    return out;
+  }
+};
+function addDays(dateStr,n){ const d=new Date(dateStr+"T00:00:00"); d.setDate(d.getDate()+n); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function money(cur,n){ const v=Math.round(n*100)/100; return esc(cur)+" "+(v<0?"−":"")+Math.abs(v).toFixed(2); }
+function sumsHTML(s,emptyText){ const ks=Object.keys(s); return ks.length?ks.map(c=>`<div style="font-size:20px;font-weight:650;font-family:var(--mono)">${money(c,s[c])}</div>`).join(""):`<div style="font-size:20px;font-weight:650;font-family:var(--mono);color:var(--faint)">${emptyText||"—"}</div>`; }
+
+UI.finance = function(){
+  const f=FinanceService.data();
+  const tStr=todayStr();
+  const in30=FinanceService.expectedIn(30), in60=FinanceService.expectedIn(60), out30=FinanceService.committedOut(30);
+  const net={}; Object.keys(in30).forEach(c=>net[c]=(net[c]||0)+in30[c]); Object.keys(out30).forEach(c=>net[c]=(net[c]||0)-out30[c]);
+  const income=f.income.slice().sort((a,b)=>(a.status==="received")-(b.status==="received")||String(a.expectedDate).localeCompare(String(b.expectedDate)));
+  const outs=f.outgoings.filter(x=>!x.paid).slice().sort((a,b)=>String(a.dueDate).localeCompare(String(b.dueDate)));
+  const paidOuts=f.outgoings.filter(x=>x.paid);
+  const recBadge=r=>r&&r!=="none"?`<span class="badge">${esc(r)}</span>`:"";
+  return `
+  <div class="viewhead"><div><h1>Finance</h1><div class="sub">Revenue you're driving towards, and what's committed to go out</div></div>
+    <div class="viewactions"><button class="btn" id="finAddOut">+ Payment to make</button><button class="btn primary" id="finAddInc">+ Expected revenue</button></div></div>
+  <div class="grid c4" style="margin-bottom:16px">
+    <div class="card"><div class="eyebrow">Expected in — 30 days</div>${sumsHTML(in30,"nothing yet")}</div>
+    <div class="card"><div class="eyebrow">Expected in — 60 days</div>${sumsHTML(in60,"nothing yet")}</div>
+    <div class="card"><div class="eyebrow">Committed out — 30 days</div>${sumsHTML(out30,"nothing")}</div>
+    <div class="card"><div class="eyebrow">Net — 30 days</div>${(()=>{const ks=Object.keys(net);return ks.length?ks.map(c=>`<div style="font-size:20px;font-weight:650;font-family:var(--mono);color:${net[c]<0?"var(--danger)":"var(--ok)"}">${money(c,net[c])}</div>`).join(""):`<div style="font-size:20px;font-weight:650;font-family:var(--mono);color:var(--faint)">—</div>`;})()}</div>
+  </div>
+  <div class="grid c2">
+    <div class="card">
+      <h2><span class="eyebrow">Revenue pipeline</span></h2>
+      ${income.length?income.map(x=>`
+        <div style="padding:9px 0;border-bottom:1px solid var(--line);${x.status==="received"?"opacity:.55":""}">
+          <div style="display:flex;justify-content:space-between;gap:8px">
+            <div><b style="font-size:13.5px">${esc(x.name||"Unnamed")}</b>${x.client?` <span class="mono" style="font-size:10.5px;color:var(--faint)">· ${esc(x.client)}</span>`:""} ${recBadge(x.recurring)}</div>
+            <span class="mono" style="font-size:12.5px;white-space:nowrap">${money(x.currency,parseFloat(x.amount||0))}</span>
+          </div>
+          <div class="mono" style="font-size:10.5px;color:${x.status!=="received"&&x.expectedDate<tStr?"var(--danger)":"var(--faint)"};margin-top:3px">
+            ${x.status==="received"?"received "+esc(fmtDate(x.receivedOn||x.expectedDate)):"expected "+esc(fmtDate(x.expectedDate))+(x.expectedDate<tStr?" · late":"")} · ${esc(x.status)}</div>
+          ${x.status!=="received"?`<div class="row" style="margin-top:6px">
+            <button class="btn sm" data-received="${esc(x.id)}">Mark received</button>
+            ${x.status==="expected"?`<button class="btn sm ghost" data-invoiced="${esc(x.id)}">Mark invoiced</button>`:""}
+            <button class="btn sm ghost" data-editinc="${esc(x.id)}">Edit</button>
+            <button class="btn sm ghost" data-delinc="${esc(x.id)}" style="color:var(--danger)">Delete</button></div>`
+          :`<div class="row" style="margin-top:6px"><button class="btn sm ghost" data-delinc="${esc(x.id)}" style="color:var(--danger)">Delete</button></div>`}
+        </div>`).join("")
+      :`<div class="empty">No expected revenue yet. Add what you're aiming to bring in — each entry is a target to drive towards.</div>`}
+    </div>
+    <div class="card">
+      <h2><span class="eyebrow">Payments to make</span></h2>
+      ${outs.length?outs.map(x=>`
+        <div style="padding:9px 0;border-bottom:1px solid var(--line)">
+          <div style="display:flex;justify-content:space-between;gap:8px">
+            <div><b style="font-size:13.5px">${esc(x.name||"Unnamed")}</b>${x.category?` <span class="mono" style="font-size:10.5px;color:var(--faint)">· ${esc(x.category)}</span>`:""} ${recBadge(x.recurring)}</div>
+            <span class="mono" style="font-size:12.5px;white-space:nowrap;color:var(--danger)">−${money(x.currency,parseFloat(x.amount||0))}</span>
+          </div>
+          <div class="mono" style="font-size:10.5px;color:${x.dueDate<tStr?"var(--danger)":"var(--faint)"};margin-top:3px">due ${esc(fmtDate(x.dueDate))}${x.dueDate<tStr?" · OVERDUE":""}</div>
+          <div class="row" style="margin-top:6px">
+            <button class="btn sm" data-paid="${esc(x.id)}">Mark paid</button>
+            <button class="btn sm ghost" data-editout="${esc(x.id)}">Edit</button>
+            <button class="btn sm ghost" data-delout="${esc(x.id)}" style="color:var(--danger)">Delete</button></div>
+        </div>`).join("")
+      :`<div class="empty">Nothing due. Add bills, subscriptions and commitments so nothing catches you out.</div>`}
+      ${paidOuts.length?`<div class="grouphead"><span class="eyebrow">Settled one-offs</span></div>
+        <div style="opacity:.6">${paidOuts.slice(0,5).map(x=>`<div style="padding:5px 0;font-size:12px;color:var(--faint)">✓ ${esc(x.name)} — ${money(x.currency,parseFloat(x.amount||0))}</div>`).join("")}</div>`:""}
+    </div>
+  </div>`;
+};
+function openIncomeEditor(id){
+  const x=id?FinanceService.get("income",id):null;
+  $("#modalHost").innerHTML=`<div class="overlay" id="ovInc"><div class="modal" style="max-width:520px">
+    <h2><span class="eyebrow">${x?"Edit expected revenue":"Expected revenue"}</span></h2>
+    <div class="field"><label>What is it</label><input id="fiName" value="${esc(x?x.name:"")}" placeholder="e.g. Kenac solar proposal — phase 1"></div>
+    <div class="field"><label>Client / source</label><input id="fiClient" value="${esc(x?x.client:"")}" placeholder="e.g. Kenac Computer Systems"></div>
+    <div class="fieldrow">
+      <div class="field"><label>Amount</label><input id="fiAmount" type="number" min="0" step="0.01" value="${x?esc(String(x.amount)):""}"></div>
+      <div class="field"><label>Currency</label><select id="fiCur">${["USD","GBP","ZWG","EUR","ZAR"].map(c=>`<option ${x&&x.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
+    </div>
+    <div class="fieldrow">
+      <div class="field"><label>Expected date</label><input id="fiDate" type="date" value="${esc(x?x.expectedDate:todayStr())}"></div>
+      <div class="field"><label>Repeats</label><select id="fiRec">${["none","weekly","monthly","quarterly","annually"].map(r=>`<option ${x&&x.recurring===r?"selected":""}>${r}</option>`).join("")}</select></div>
+    </div>
+    <div class="field"><label>Notes</label><input id="fiNotes" value="${esc(x?x.notes:"")}"></div>
+    <div class="modalfoot"><button class="btn" id="fiCancel">Cancel</button><button class="btn primary" id="fiSave">Save</button></div>
+  </div></div>`;
+  $("#fiCancel").onclick=closeModal;
+  $("#ovInc").addEventListener("click",e=>{ if(e.target.id==="ovInc") closeModal(); });
+  $("#fiSave").onclick=()=>{
+    const amt=parseFloat($("#fiAmount").value);
+    if(!$("#fiName").value.trim()||!amt||amt<=0){ toast("Name and a valid amount are needed","warn"); return; }
+    const patch={name:$("#fiName").value.trim(),client:$("#fiClient").value.trim(),amount:amt,currency:$("#fiCur").value,expectedDate:$("#fiDate").value||todayStr(),recurring:$("#fiRec").value,notes:$("#fiNotes").value.trim()};
+    if(x) FinanceService.update("income",id,patch); else FinanceService.addIncome(patch);
+    closeModal(); render(); toast("Saved","ok");
+  };
+}
+function openOutgoingEditor(id){
+  const x=id?FinanceService.get("outgoings",id):null;
+  $("#modalHost").innerHTML=`<div class="overlay" id="ovOut"><div class="modal" style="max-width:520px">
+    <h2><span class="eyebrow">${x?"Edit payment":"Payment to make"}</span></h2>
+    <div class="field"><label>What is it</label><input id="foName" value="${esc(x?x.name:"")}" placeholder="e.g. Starlink subscription"></div>
+    <div class="field"><label>Category</label><input id="foCat" value="${esc(x?x.category:"")}" placeholder="e.g. Farm, Software, Loans"></div>
+    <div class="fieldrow">
+      <div class="field"><label>Amount</label><input id="foAmount" type="number" min="0" step="0.01" value="${x?esc(String(x.amount)):""}"></div>
+      <div class="field"><label>Currency</label><select id="foCur">${["USD","GBP","ZWG","EUR","ZAR"].map(c=>`<option ${x&&x.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
+    </div>
+    <div class="fieldrow">
+      <div class="field"><label>Next due</label><input id="foDate" type="date" value="${esc(x?x.dueDate:todayStr())}"></div>
+      <div class="field"><label>Repeats</label><select id="foRec">${["none","weekly","monthly","quarterly","annually"].map(r=>`<option ${x&&x.recurring===r?"selected":""}>${r}</option>`).join("")}</select></div>
+    </div>
+    <div class="field"><label>Notes</label><input id="foNotes" value="${esc(x?x.notes:"")}"></div>
+    <div class="modalfoot"><button class="btn" id="foCancel">Cancel</button><button class="btn primary" id="foSave">Save</button></div>
+  </div></div>`;
+  $("#foCancel").onclick=closeModal;
+  $("#ovOut").addEventListener("click",e=>{ if(e.target.id==="ovOut") closeModal(); });
+  $("#foSave").onclick=()=>{
+    const amt=parseFloat($("#foAmount").value);
+    if(!$("#foName").value.trim()||!amt||amt<=0){ toast("Name and a valid amount are needed","warn"); return; }
+    const patch={name:$("#foName").value.trim(),category:$("#foCat").value.trim(),amount:amt,currency:$("#foCur").value,dueDate:$("#foDate").value||todayStr(),recurring:$("#foRec").value,notes:$("#foNotes").value.trim()};
+    if(x) FinanceService.update("outgoings",id,patch); else FinanceService.addOutgoing(patch);
+    closeModal(); render(); toast("Saved","ok");
+  };
+}
 /* ---------------- NOTES ---------------- */
 const NoteService = {
   all(){ return (AppState.data.notes=AppState.data.notes||[]); },
@@ -2313,6 +2490,15 @@ function bindView(){
   if(v==="focus"){ fillFocusMoney(); const ch=$("#coachHide"); if(ch) ch.onclick=()=>{ localStorage.setItem("gtdcc-coach-hide",todayStr()); render(); }; }
   if(v==="people"){ fillPeople(); const pr=$("#pplRefresh"); if(pr) pr.onclick=fillPeople; const pa=$("#pplAddBtn"); if(pa) pa.onclick=openAddPerson; }
   $$("#view [data-note]").forEach(el=>el.addEventListener("click",()=>openNoteEditor(el.dataset.note)));
+  const fa=$("#finAddInc"); if(fa) fa.onclick=()=>openIncomeEditor();
+  const fo=$("#finAddOut"); if(fo) fo.onclick=()=>openOutgoingEditor();
+  $$("#view [data-received]").forEach(b=>b.onclick=()=>{ FinanceService.markReceived(b.dataset.received); render(); toast("Marked received","ok"); });
+  $$("#view [data-invoiced]").forEach(b=>b.onclick=()=>{ FinanceService.update("income",b.dataset.invoiced,{status:"invoiced"}); render(); });
+  $$("#view [data-editinc]").forEach(b=>b.onclick=()=>openIncomeEditor(b.dataset.editinc));
+  $$("#view [data-delinc]").forEach(b=>b.onclick=()=>{ if(confirm("Delete this revenue entry?")){ FinanceService.remove("income",b.dataset.delinc); render(); } });
+  $$("#view [data-paid]").forEach(b=>b.onclick=()=>{ FinanceService.markPaid(b.dataset.paid); render(); toast("Marked paid","ok"); });
+  $$("#view [data-editout]").forEach(b=>b.onclick=()=>openOutgoingEditor(b.dataset.editout));
+  $$("#view [data-delout]").forEach(b=>b.onclick=()=>{ if(confirm("Delete this payment?")){ FinanceService.remove("outgoings",b.dataset.delout); render(); } });
   const nn=$("#newNoteBtn"); if(nn) nn.onclick=()=>{ const n=NoteService.create(); openNoteEditor(n.id); };
   const sb=$("#smartBtn"); if(sb) sb.onclick=()=>openSmartCapture();
   const qm=$("#qcMic"); if(qm) qm.onclick=()=>voiceToggle(qm,$("#quickCapture"));
@@ -2529,7 +2715,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $$("nav .navbtn,[id=mobilenav] .navbtn").forEach(b=>{ if(b.dataset.view) b.addEventListener("click",()=>go(b.dataset.view)); });
   const mm=$("#mobMore");
   if(mm) mm.addEventListener("click",()=>{
-    const views=[["clarify","Clarify"],["waiting","Waiting for"],["people","People"],["notes","Notes"],["calendar","Calendar"],["someday","Someday / Maybe"],["reference","Reference"],["review","Review"],["settings","Data & settings"]];
+    const views=[["clarify","Clarify"],["waiting","Waiting for"],["people","People"],["finance","Finance"],["notes","Notes"],["calendar","Calendar"],["someday","Someday / Maybe"],["reference","Reference"],["review","Review"],["settings","Data & settings"]];
     $("#modalHost").innerHTML=`<div class="overlay" id="ovMore"><div class="modal" style="max-width:420px">
       <h2><span class="eyebrow">All views</span></h2>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
