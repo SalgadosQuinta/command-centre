@@ -1,6 +1,6 @@
 {
-  "name": "GTD Command Centre",
-  "short_name": "GTD",
+  "name": "Rodney GTD",
+  "short_name": "Rodney GTD",
   "description": "Capture. Clarify. Organise. Reflect. Engage.",
   "start_url": "./index.html",
   "scope": "./",

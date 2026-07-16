@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GTD Command Centre</title>
+<title>Rodney GTD</title>
 <meta name="theme-color" content="#0f1216">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -275,7 +275,7 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
   <div class="setupcard">
     <div class="mast">
       <div class="eyebrow">Local file · No cloud · No accounts</div>
-      <h1 id="setupTitle">GTD Command Centre</h1>
+      <h1 id="setupTitle">Rodney GTD</h1>
       <div class="tag-line" id="setupSubtitle">Capture. Clarify. Organise. Reflect. Engage.</div>
     </div>
     <h2 style="font-size:15px;margin-bottom:12px">Connect your GTD data</h2>
@@ -294,7 +294,7 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
 <!-- ================= APP SHELL ================= -->
 <div id="app">
   <header class="topbar">
-    <div class="brand"><b id="brandName">GTD Command Centre</b><span id="brandSub">Capture · Clarify · Organise · Reflect · Engage</span></div>
+    <div class="brand"><b id="brandName">Rodney GTD</b><span id="brandSub">Capture · Clarify · Organise · Reflect · Engage</span></div>
     <input id="globalSearch" type="search" placeholder="Search tasks, projects, notes…  ( / )" aria-label="Global search">
     <div class="spacer"></div>
     <div class="savebar">
@@ -317,6 +317,7 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
     <button class="navbtn" data-view="next"><svg viewBox="0 0 24 24"><path d="M5 4l14 8-14 8z"/></svg>Next actions<span class="cnt" id="cntNext"></span></button>
     <button class="navbtn" data-view="projects"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Projects<span class="cnt" id="cntProjects"></span></button>
     <button class="navbtn" data-view="waiting"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Waiting for<span class="cnt" id="cntWaiting"></span></button>
+    <button class="navbtn" data-view="people"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5 5 0 0 1 6 4.5"/></svg>People</button>
     <button class="navbtn" data-view="someday"><svg viewBox="0 0 24 24"><path d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/></svg>Someday / Maybe<span class="cnt" id="cntSomeday"></span></button>
     <button class="navbtn" data-view="reference"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4H6.5A2.5 2.5 0 0 0 4 6.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>Reference</button>
     <div class="navsec eyebrow">Reflect</div>
@@ -346,7 +347,7 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
    CONFIGURATION
    ============================================================ */
 const APP_CONFIG = {
-  appName: "GTD Command Centre",
+  appName: "Rodney GTD",
   appSubtitle: "Capture. Clarify. Organise. Reflect. Engage.",
   dataSource: { type: "local-json-file", fileName: "tasks.json" },
   schemaVersion: "1.0",
@@ -1604,6 +1605,95 @@ function openDelegateModal(taskId){
   }).catch(err=>toast(err.message,"warn"));
 }
 
+UI.people = function(){
+  if(!CloudService.signedIn()){
+    return `<div class="viewhead"><div><h1>People</h1><div class="sub">Delegation and money, person by person</div></div></div>
+    <div class="card"><p style="color:var(--muted);font-size:13px">Sign in to the cloud to see people, the tasks you're waiting on them for, and the money position with each of them.</p>
+    <div class="modalfoot" style="justify-content:flex-start"><button class="btn primary" data-go="settings">Go to Data &amp; settings</button></div></div>`;
+  }
+  return `<div class="viewhead"><div><h1>People</h1><div class="sub">Delegation and money, person by person</div></div>
+    <div class="viewactions"><button class="btn" id="pplRefresh">Refresh</button></div></div>
+  <div id="pplBody"><div class="card"><p class="mono" style="font-size:12px;color:var(--muted)">Loading people…</p></div></div>`;
+};
+function personMatchesTask(p,t){
+  if(!t.waitingFor||!t.waitingFor.person) return false;
+  const w=t.waitingFor.person.toLowerCase();
+  const email=(p.email||"").toLowerCase(), name=(p.display_name||"").toLowerCase();
+  return w===email||(name&&w===name)||w.includes(email)||(name&&w.includes(name))||email.includes(w);
+}
+async function fillPeople(){
+  const body=$("#pplBody"); if(!body) return;
+  try{
+    const me=CloudService.me().id;
+    const [people,ledger,cloudTasks]=await Promise.all([
+      CloudService.people(),
+      CloudService.ledger(),
+      CloudService.api(`cloud_tasks?owner_id=eq.${me}&select=id,title,status,due_date,assignee_id,comments,created_at&order=created_at.desc`)
+    ]);
+    if(!$("#pplBody")) return;
+    const others=people.filter(p=>p.id!==me);
+    if(!others.length){ body.innerHTML=`<div class="card"><p style="color:var(--muted);font-size:13px">No other people have accounts yet. Once someone creates an account in the Tasks app, they'll appear here.</p></div>`; return; }
+    if(!AppState.peopleSel||!others.some(p=>p.id===AppState.peopleSel)) AppState.peopleSel=others[0].id;
+    const sel=others.find(p=>p.id===AppState.peopleSel);
+    const fmt=n=>{const v=Math.round(n*100)/100; return (v<0?"−":"")+Math.abs(v).toFixed(2);};
+
+    // money for selected person
+    const rows=ledger.filter(r=>r.person_id===sel.id);
+    const bal={}; let floats={}, spends={};
+    rows.forEach(r=>{const c=r.currency||"USD"; const a=parseFloat(r.amount);
+      bal[c]=(bal[c]||0)+(r.type==="float"?1:-1)*a;
+      if(r.type==="float") floats[c]=(floats[c]||0)+a; else spends[c]=(spends[c]||0)+a;});
+
+    // tasks with this person: cloud-delegated + local waiting matches
+    const theirCloud=cloudTasks.filter(t=>t.assignee_id===sel.id);
+    const localWaiting=TaskService.byStatus("waiting").filter(t=>personMatchesTask(sel,t));
+    const openCloud=theirCloud.filter(t=>!["done","declined"].includes(t.status));
+    const doneCloud=theirCloud.filter(t=>["done","declined"].includes(t.status));
+
+    body.innerHTML=`
+    <div class="filterbar" style="margin-bottom:14px">${others.map(p=>`<button class="btn sm ${p.id===sel.id?"primary":""}" data-ppl="${esc(p.id)}">${esc(p.display_name||p.email)}</button>`).join("")}</div>
+    <div class="grid c2">
+      <div class="card">
+        <h2><span class="eyebrow">Money with ${esc(sel.display_name||sel.email)}</span></h2>
+        ${Object.keys(bal).length?Object.keys(bal).map(c=>{const v=bal[c];
+          return `<div style="margin-bottom:10px">
+            <div style="font-size:24px;font-weight:650;font-family:var(--mono);color:${v<0?"var(--danger)":"var(--text)"}">${esc(c)} ${fmt(v)}</div>
+            <div class="sub">${v<0?"You owe them — they've spent beyond the float.":v>0?"Float they currently hold.":"All square."}</div>
+            <div class="mono" style="font-size:11px;color:var(--faint);margin-top:4px">Given ${esc(c)} ${fmt(floats[c]||0)} · spent ${esc(c)} ${fmt(spends[c]||0)}</div>
+          </div>`;}).join("")
+        :`<p style="color:var(--muted);font-size:12.5px">No money entries with this person yet.</p>`}
+        <div class="modalfoot" style="justify-content:flex-start"><button class="btn primary" id="pplFloat">Give float</button><button class="btn" id="pplLedger">Full ledger</button></div>
+        ${rows.length?`<div class="grouphead" style="margin-top:12px"><span class="eyebrow">Recent entries</span></div>
+        ${rows.slice(0,8).map(r=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px">
+          <span>${r.type==="float"?"Float":"Spend"}${r.description?" — "+esc(r.description):""}${r.receipt_path?` <a href="#" data-receipt="${esc(r.receipt_path)}" style="color:var(--accent)">receipt</a>`:""}</span>
+          <span class="mono" style="font-size:11.5px;color:${r.type==="spend"?"var(--danger)":"var(--muted)"};white-space:nowrap">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</span></div>`).join("")}`:""}
+      </div>
+      <div class="card">
+        <h2><span class="eyebrow">Tasks with ${esc(sel.display_name||sel.email)}</span></h2>
+        ${openCloud.length?`<div class="grouphead" style="margin-top:2px"><span class="eyebrow">Sent via cloud (${openCloud.length})</span></div>
+          ${openCloud.map(t=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)">
+            <div style="font-size:13.5px;font-weight:600">${esc(t.title)}</div>
+            <div class="mono" style="font-size:10.5px;color:${t.status==="done"?"var(--ok)":"var(--accent)"}">☁ ${esc(t.status.replace("_"," ").toUpperCase())}${t.due_date?` · due ${esc(fmtDate(t.due_date))}`:""}${(t.comments||[]).length?` · ${(t.comments||[]).length} comment${(t.comments||[]).length===1?"":"s"}`:""}</div>
+            ${(t.comments||[]).slice(-1).map(c=>`<div style="font-size:12px;color:var(--muted);margin-top:3px">"${esc(c.text)}"</div>`).join("")}
+          </div>`).join("")}`:""}
+        ${localWaiting.length?`<div class="grouphead"><span class="eyebrow">Waiting for (${localWaiting.length})</span></div>
+          ${localWaiting.map(t=>`<div class="trow" data-task="${esc(t.id)}" style="cursor:pointer;padding:8px 0;border-bottom:1px solid var(--line)">
+            <div style="font-size:13.5px">${esc(t.title)}</div>
+            <div class="mono" style="font-size:10.5px;color:var(--faint)">${t.waitingFor.expectedDate?`expected ${esc(fmtDate(t.waitingFor.expectedDate))}`:"no expected date"}${t.cloud?` · ☁ ${esc(t.cloud.status.replace("_"," "))}`:""}</div>
+          </div>`).join("")}`:""}
+        ${!openCloud.length&&!localWaiting.length?`<p style="color:var(--muted);font-size:12.5px">Nothing outstanding with this person.</p>`:""}
+        ${doneCloud.length?`<div class="grouphead"><span class="eyebrow">Completed (${doneCloud.length})</span></div>
+          <div style="opacity:.7">${doneCloud.slice(0,5).map(t=>`<div style="padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px;text-decoration:line-through;color:var(--faint)">${esc(t.title)}</div>`).join("")}</div>`:""}
+      </div>
+    </div>`;
+    // bindings
+    $$("#pplBody [data-ppl]").forEach(b=>b.onclick=()=>{ AppState.peopleSel=b.dataset.ppl; fillPeople(); });
+    $$("#pplBody [data-task]").forEach(el=>el.onclick=()=>UI.taskDrawer(el.dataset.task));
+    $$("#pplBody [data-receipt]").forEach(a=>a.onclick=async(e)=>{e.preventDefault(); try{ window.open(await CloudService.receiptUrl(a.dataset.receipt),"_blank"); }catch(err){ toast(err.message,"warn"); }});
+    const pf=$("#pplFloat"); if(pf) pf.onclick=openLedgerModal;
+    const pl=$("#pplLedger"); if(pl) pl.onclick=openLedgerModal;
+  }catch(err){ if($("#pplBody")) $("#pplBody").innerHTML=`<div class="card"><p style="color:var(--danger);font-size:12.5px">${esc(err.message)}</p></div>`; }
+}
 UI.settings = function(){
   const m=AppState.data.metadata;
   const modeName={live:"Connected (live file)",readonly:"Read only",cached:"Cached copy",demo:"Demo mode"}[AppState.storageMode];
@@ -1957,6 +2047,7 @@ function fillFocusMoney(){
 function bindView(){
   const v=AppState.currentView;
   if(v==="focus") fillFocusMoney();
+  if(v==="people"){ fillPeople(); const pr=$("#pplRefresh"); if(pr) pr.onclick=fillPeople; }
   const sb=$("#smartBtn"); if(sb) sb.onclick=()=>openSmartCapture();
   const fc=$("#focusCapture"); if(fc) fc.onclick=()=>UI.captureModal();
   // shared: open task drawer / project card
@@ -2171,7 +2262,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $$("nav .navbtn,[id=mobilenav] .navbtn").forEach(b=>{ if(b.dataset.view) b.addEventListener("click",()=>go(b.dataset.view)); });
   const mm=$("#mobMore");
   if(mm) mm.addEventListener("click",()=>{
-    const views=[["clarify","Clarify"],["waiting","Waiting for"],["calendar","Calendar"],["someday","Someday / Maybe"],["reference","Reference"],["review","Review"],["settings","Data & settings"]];
+    const views=[["clarify","Clarify"],["waiting","Waiting for"],["people","People"],["calendar","Calendar"],["someday","Someday / Maybe"],["reference","Reference"],["review","Review"],["settings","Data & settings"]];
     $("#modalHost").innerHTML=`<div class="overlay" id="ovMore"><div class="modal" style="max-width:420px">
       <h2><span class="eyebrow">All views</span></h2>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
