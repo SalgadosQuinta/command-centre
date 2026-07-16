@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tasks</title>
+<meta name="theme-color" content="#0f1216">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script>
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+}
+</script>
+<style>
+:root{
+  --bg:#0f1216; --panel:#171b21; --panel2:#1d2229; --line:#262c35;
+  --text:#e8e6e1; --muted:#9aa3ad; --faint:#6b7480; --accent:#c9a227;
+  --ok:#4caf7d; --danger:#e05d5d; --warn:#d9a13b;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh}
+.wrap{max-width:640px;margin:0 auto;padding:16px 14px 90px}
+.eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+h1{font-size:19px;font-weight:650;margin:2px 0 2px}
+.sub{color:var(--muted);font-size:12.5px;margin-bottom:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+label{display:block;font-size:11px;color:var(--muted);margin:10px 0 4px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase}
+input,select,textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:9px 10px;font-size:14px;font-family:var(--sans)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+.btn{display:inline-block;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:7px;padding:9px 14px;font-size:13px;cursor:pointer;font-family:var(--sans)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#14110a;font-weight:650}
+.btn.sm{padding:6px 10px;font-size:12px}
+.btn.ghost{background:transparent}
+.btn.danger{border-color:var(--danger);color:var(--danger)}
+.btn:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pill{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;border:1px solid var(--line);border-radius:999px;padding:3px 9px;color:var(--muted)}
+.pill.sent{color:var(--accent);border-color:var(--accent)}
+.pill.done{color:var(--ok);border-color:var(--ok)}
+.pill.in_progress,.pill.accepted{color:var(--warn);border-color:var(--warn)}
+.pill.declined{color:var(--danger);border-color:var(--danger)}
+.task{border-left:3px solid var(--line);padding-left:11px;margin-bottom:14px}
+.task.unseen{border-left-color:var(--accent)}
+.ttl{font-size:14.5px;font-weight:600}
+.meta{color:var(--faint);font-size:11.5px;font-family:var(--mono);margin:3px 0 6px}
+.notes{color:var(--muted);font-size:13px;white-space:pre-wrap;margin-bottom:8px}
+.comment{background:var(--panel2);border-radius:7px;padding:7px 10px;font-size:12.5px;margin-top:6px}
+.comment .who{font-family:var(--mono);font-size:10px;color:var(--faint)}
+.tabs{position:fixed;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid var(--line);display:flex;z-index:5}
+.tabs button{flex:1;background:none;border:none;color:var(--muted);padding:13px 0 max(13px,env(safe-area-inset-bottom));font-size:12px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+.tabs button.on{color:var(--accent)}
+.bal{font-size:26px;font-weight:650;font-family:var(--mono)}
+.bal.neg{color:var(--danger)}
+.tx{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.tx:last-child{border-bottom:none}
+.tx .amt{font-family:var(--mono);white-space:nowrap}
+.tx .amt.spend{color:var(--danger)}
+.toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--accent);border-radius:8px;padding:9px 16px;font-size:13px;z-index:20;max-width:90vw}
+.hidden{display:none!important}
+a{color:var(--accent)}
+.empty{color:var(--faint);text-align:center;padding:26px 0;font-size:13px}
+.topline{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- SIGN IN -->
+  <div id="authView">
+    <div style="margin:26px 0 18px;text-align:center">
+      <div class="eyebrow">Command Centre</div>
+      <h1>Tasks</h1>
+      <div class="sub">Sign in to see tasks sent to you and record spending.</div>
+    </div>
+    <div class="card">
+      <label>Email</label><input id="aEmail" type="email" autocomplete="username">
+      <label>Password</label><input id="aPass" type="password" autocomplete="current-password">
+      <div class="row" style="margin-top:14px">
+        <button class="btn primary" id="aIn">Sign in</button>
+        <button class="btn" id="aUp">Create account</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="appView" class="hidden">
+    <div class="topline">
+      <div><div class="eyebrow">Command Centre</div><h1 id="viewTitle">Tasks</h1></div>
+      <div class="row"><button class="btn sm" id="refreshBtn">Refresh</button><button class="btn sm ghost" id="outBtn">Sign out</button></div>
+    </div>
+    <div class="sub" id="whoLine"></div>
+    <div id="tasksTab"></div>
+    <div id="moneyTab" class="hidden"></div>
+  </div>
+</div>
+
+<div class="tabs hidden" id="tabs">
+  <button data-tab="tasks" class="on">Tasks</button>
+  <button data-tab="money">Money</button>
+</div>
+
+<script>
+const CLOUD={url:"https://ejlsbydsqjbxfwmvlapm.supabase.co",key:"sb_publishable_hB7hrrTkLMNh6FrH_FTUSg_cxIlM9Nt"};
+const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function toast(m){const t=document.createElement("div");t.className="toast";t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),3200);}
+const fmtD=s=>{if(!s)return "";const d=new Date(s);return d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});};
+
+const Cloud={
+  session:null,
+  load(){try{this.session=JSON.parse(localStorage.getItem("tasks-cloud")||"null")}catch(e){this.session=null}},
+  store(s){this.session=s;if(s)localStorage.setItem("tasks-cloud",JSON.stringify(s));else localStorage.removeItem("tasks-cloud")},
+  me(){return this.session&&this.session.user},
+  async auth(path,body){
+    const r=await fetch(`${CLOUD.url}/auth/v1/${path}`,{method:"POST",headers:{apikey:CLOUD.key,"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.msg||d.error_description||d.message||"Sign in failed");
+    return d;
+  },
+  async signIn(e,p){const d=await this.auth("token?grant_type=password",{email:e,password:p});this.store({access_token:d.access_token,refresh_token:d.refresh_token,user:d.user});},
+  async signUp(e,p){const d=await this.auth("signup",{email:e,password:p});if(d.access_token){this.store({access_token:d.access_token,refresh_token:d.refresh_token,user:d.user});return true;}return false;},
+  async refresh(){if(!this.session)return false;try{const d=await this.auth("token?grant_type=refresh_token",{refresh_token:this.session.refresh_token});this.store({access_token:d.access_token,refresh_token:d.refresh_token,user:d.user});return true;}catch(e){this.store(null);return false;}},
+  async api(path,opts,retried){
+    opts=opts||{};
+    const r=await fetch(`${CLOUD.url}/rest/v1/${path}`,{method:opts.method||"GET",
+      headers:Object.assign({apikey:CLOUD.key,Authorization:"Bearer "+this.session.access_token,"Content-Type":"application/json",Prefer:opts.prefer||"return=representation"},opts.headers||{}),
+      body:opts.body?JSON.stringify(opts.body):undefined});
+    if(r.status===401&&!retried&&await this.refresh())return this.api(path,opts,true);
+    if(!r.ok){throw new Error("Error: "+(await r.text()).slice(0,160));}
+    return r.status===204?null:r.json();
+  },
+  async upload(path,file){
+    const r=await fetch(`${CLOUD.url}/storage/v1/object/receipts/${path}`,{method:"POST",headers:{apikey:CLOUD.key,Authorization:"Bearer "+this.session.access_token,"Content-Type":file.type||"application/octet-stream"},body:file});
+    if(!r.ok)throw new Error("Photo upload failed");
+    return path;
+  },
+  async signedUrl(path){
+    const r=await fetch(`${CLOUD.url}/storage/v1/object/sign/receipts/${path}`,{method:"POST",headers:{apikey:CLOUD.key,Authorization:"Bearer "+this.session.access_token,"Content-Type":"application/json"},body:JSON.stringify({expiresIn:3600})});
+    const d=await r.json();
+    if(!r.ok||!d.signedURL)throw new Error("Could not open receipt");
+    return CLOUD.url+"/storage/v1"+d.signedURL;
+  }
+};
+Cloud.load();
+
+let TASKS=[],TX=[],TAB="tasks";
+
+async function loadAll(){
+  const me=Cloud.me().id;
+  [TASKS,TX]=await Promise.all([
+    Cloud.api(`cloud_tasks?assignee_id=eq.${me}&order=created_at.desc&select=*,owner:owner_id(email,display_name)`),
+    Cloud.api(`transactions?person_id=eq.${me}&order=created_at.desc&select=*,owner:ledger_owner_id(email,display_name)`)
+  ]);
+  // mark newly received tasks as seen
+  const unseen=TASKS.filter(t=>t.status==="sent");
+  for(const t of unseen){
+    try{await Cloud.api(`cloud_tasks?id=eq.${t.id}`,{method:"PATCH",body:{status:"seen",updated_at:new Date().toISOString()},prefer:"return=minimal"});t.status="seen";}catch(e){}
+  }
+  renderApp();
+}
+
+function balances(){
+  const by={};
+  TX.forEach(r=>{const c=r.currency||"USD";by[c]=(by[c]||0)+(r.type==="float"?1:-1)*parseFloat(r.amount);});
+  return by;
+}
+
+function renderApp(){
+  $("#whoLine").textContent="Signed in as "+Cloud.me().email;
+  $("#viewTitle").textContent=TAB==="tasks"?"Tasks":"Money";
+  $("#tasksTab").classList.toggle("hidden",TAB!=="tasks");
+  $("#moneyTab").classList.toggle("hidden",TAB!=="money");
+  $$(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.tab===TAB));
+
+  const open=TASKS.filter(t=>!["done","declined"].includes(t.status));
+  const closed=TASKS.filter(t=>["done","declined"].includes(t.status));
+  $("#tasksTab").innerHTML = (TASKS.length?"":`<div class="card"><div class="empty">Nothing in your inbox yet.</div></div>`)
+    + (open.length?`<div class="card">${open.map(taskHTML).join("")}</div>`:"")
+    + (closed.length?`<div class="eyebrow" style="display:block;margin:14px 0 6px">Completed</div><div class="card" style="opacity:.75">${closed.map(taskHTML).join("")}</div>`:"");
+  bindTasks();
+
+  const bal=balances();
+  $("#moneyTab").innerHTML=`
+    <div class="card">
+      <div class="eyebrow">Balance you hold</div>
+      ${Object.keys(bal).length?Object.keys(bal).map(c=>{const v=Math.round(bal[c]*100)/100;
+        return `<div class="bal ${v<0?"neg":""}">${esc(c)} ${(v<0?"−":"")+Math.abs(v).toFixed(2)}</div>
+        <div class="sub">${v<0?"Spent more than received — this amount is owed to you.":v>0?"Money received that is not yet spent.":"All square."}</div>`;}).join("")
+      :`<div class="sub" style="margin-top:6px">No money entries yet.</div>`}
+    </div>
+    <div class="card">
+      <div class="eyebrow">Record spending</div>
+      <label>Amount</label><input id="spAmt" type="number" min="0.01" step="0.01" inputmode="decimal">
+      <label>Currency</label><select id="spCur"><option>USD</option><option>GBP</option><option>ZWG</option><option>EUR</option><option>ZAR</option></select>
+      <label>What it was for</label><input id="spDesc" placeholder="e.g. Irrigation fittings">
+      <label>Related task (optional)</label><select id="spTask"><option value="">—</option>${TASKS.map(t=>`<option value="${esc(t.id)}">${esc(t.title)}</option>`).join("")}</select>
+      <label>Receipt photo (optional)</label><input id="spFile" type="file" accept="image/*" capture="environment">
+      <div class="row" style="margin-top:14px"><button class="btn primary" id="spSave">Record spend</button></div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">History</div>
+      ${TX.length?TX.map(r=>`<div class="tx">
+        <div><div>${r.type==="float"?"Received":"Spent"}${r.description?" — "+esc(r.description):""}</div>
+        <div class="meta">${esc(fmtD(r.created_at))}${r.receipt_path?` · <a href="#" data-receipt="${esc(r.receipt_path)}">receipt</a>`:""}</div></div>
+        <div class="amt ${r.type==="spend"?"spend":""}">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</div>
+      </div>`).join(""):`<div class="empty">No entries yet.</div>`}
+    </div>`;
+  bindMoney();
+}
+
+function taskHTML(t){
+  const comments=(t.comments||[]);
+  return `<div class="task ${t.status==="sent"?"unseen":""}" data-id="${esc(t.id)}">
+    <div class="row" style="justify-content:space-between">
+      <div class="ttl">${esc(t.title)}</div>
+      <span class="pill ${esc(t.status)}">${esc(t.status.replace("_"," "))}</span>
+    </div>
+    <div class="meta">From ${esc(t.owner?.display_name||t.owner?.email||"")}${t.due_date?` · due ${esc(fmtD(t.due_date))}`:""}${t.priority&&t.priority!=="normal"?` · ${esc(t.priority)}`:""}</div>
+    ${t.notes?`<div class="notes">${esc(t.notes)}</div>`:""}
+    ${comments.map(c=>`<div class="comment"><div class="who">${esc(c.who)} · ${esc(fmtD(c.at))}</div>${esc(c.text)}</div>`).join("")}
+    ${["done","declined"].includes(t.status)?"":`
+    <div class="row" style="margin-top:8px">
+      ${t.status==="seen"||t.status==="sent"?`<button class="btn sm" data-act="accepted" data-id="${esc(t.id)}">Accept</button>`:""}
+      ${["seen","sent","accepted"].includes(t.status)?`<button class="btn sm" data-act="in_progress" data-id="${esc(t.id)}">Start</button>`:""}
+      <button class="btn sm primary" data-act="done" data-id="${esc(t.id)}">Done</button>
+      <button class="btn sm ghost" data-comment="${esc(t.id)}">Comment</button>
+      ${["seen","sent"].includes(t.status)?`<button class="btn sm ghost danger" data-act="declined" data-id="${esc(t.id)}">Decline</button>`:""}
+    </div>`}
+  </div>`;
+}
+
+function bindTasks(){
+  $$("#tasksTab [data-act]").forEach(b=>b.onclick=async()=>{
+    const patch={status:b.dataset.act,updated_at:new Date().toISOString()};
+    if(b.dataset.act==="done")patch.completed_at=new Date().toISOString();
+    try{await Cloud.api(`cloud_tasks?id=eq.${b.dataset.id}`,{method:"PATCH",body:patch,prefer:"return=minimal"});
+      const t=TASKS.find(x=>x.id===b.dataset.id);t.status=b.dataset.act;renderApp();toast(b.dataset.act==="done"?"Marked done":"Updated");}
+    catch(e){toast(e.message);}
+  });
+  $$("#tasksTab [data-comment]").forEach(b=>b.onclick=async()=>{
+    const text=prompt("Comment:");if(!text)return;
+    const t=TASKS.find(x=>x.id===b.dataset.comment);
+    const comments=(t.comments||[]).concat([{who:Cloud.me().email,text:text,at:new Date().toISOString()}]);
+    try{await Cloud.api(`cloud_tasks?id=eq.${t.id}`,{method:"PATCH",body:{comments:comments,updated_at:new Date().toISOString()},prefer:"return=minimal"});
+      t.comments=comments;renderApp();toast("Comment added");}
+    catch(e){toast(e.message);}
+  });
+}
+
+function bindMoney(){
+  $$("#moneyTab [data-receipt]").forEach(a=>a.onclick=async(e)=>{e.preventDefault();try{window.open(await Cloud.signedUrl(a.dataset.receipt),"_blank");}catch(err){toast(err.message);}});
+  const sv=$("#spSave");if(!sv)return;
+  sv.onclick=async()=>{
+    const amt=parseFloat($("#spAmt").value);
+    if(!amt||amt<=0){toast("Enter a valid amount");return;}
+    const owners=[...new Set(TX.map(r=>r.ledger_owner_id).concat(TASKS.map(t=>t.owner_id)))].filter(Boolean);
+    if(!owners.length){toast("No one has sent you a task or float yet — ask them to first");return;}
+    sv.disabled=true;
+    try{
+      let receipt=null;
+      const f=$("#spFile").files[0];
+      if(f){
+        const safe=Date.now()+"-"+f.name.replace(/[^a-zA-Z0-9.\-_]/g,"_");
+        receipt=await Cloud.upload(`${Cloud.me().id}/${safe}`,f);
+      }
+      await Cloud.api("transactions",{method:"POST",prefer:"return=minimal",body:{
+        ledger_owner_id:owners[0],person_id:Cloud.me().id,type:"spend",amount:amt,
+        currency:$("#spCur").value,description:$("#spDesc").value.trim()||null,
+        task_id:$("#spTask").value||null,receipt_path:receipt,created_by:Cloud.me().id}});
+      toast("Spend recorded");await loadAll();
+    }catch(e){toast(e.message);}
+    sv.disabled=false;
+  };
+}
+
+function show(signedIn){
+  $("#authView").classList.toggle("hidden",signedIn);
+  $("#appView").classList.toggle("hidden",!signedIn);
+  $("#tabs").classList.toggle("hidden",!signedIn);
+}
+
+document.addEventListener("DOMContentLoaded",()=>{
+  $("#aIn").onclick=async()=>{try{await Cloud.signIn($("#aEmail").value.trim(),$("#aPass").value);show(true);loadAll();}catch(e){toast(e.message);}};
+  $("#aUp").onclick=async()=>{try{const ok=await Cloud.signUp($("#aEmail").value.trim(),$("#aPass").value);if(ok){show(true);loadAll();}else toast("Account created — check your email to confirm, then sign in");}catch(e){toast(e.message);}};
+  $("#outBtn").onclick=()=>{Cloud.store(null);show(false);};
+  $("#refreshBtn").onclick=()=>loadAll().then(()=>toast("Refreshed")).catch(e=>toast(e.message));
+  $$(".tabs button").forEach(b=>b.onclick=()=>{TAB=b.dataset.tab;renderApp();});
+  if(Cloud.me()){show(true);loadAll().catch(e=>toast(e.message));}else show(false);
+});
+</script>
+</body>
+</html>

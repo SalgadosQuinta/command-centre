@@ -1101,12 +1101,12 @@ UI.waiting = function(){
   const t0=dateOf(todayStr());
   return `
   <div class="viewhead"><div><h1>Waiting for</h1><div class="sub">Delegated work and external dependencies</div></div>
-    <div class="viewactions"><button class="btn primary" id="newWaitBtn">+ New waiting item</button></div></div>
+    <div class="viewactions">${CloudService.signedIn()?`<button class="btn" id="waitSync">Sync cloud</button>`:""}<button class="btn primary" id="newWaitBtn">+ New waiting item</button></div></div>
   ${items.length? `<div class="card" style="padding:6px 12px"><table class="plain"><thead><tr><th>Item</th><th>Who</th><th>Delegated</th><th>Expected</th><th>Follow up</th><th></th></tr></thead><tbody>
   ${items.map(t=>{const w=t.waitingFor||{}; const over=w.followUpDate&&dateOf(w.followUpDate)<=t0;
     return `<tr data-task="${esc(t.id)}" style="cursor:pointer">
       <td>${esc(t.title)}${t.projectId?`<div class="mono" style="font-size:10.5px;color:var(--faint)">▸ ${esc(projName(t.projectId))}</div>`:""}</td>
-      <td>${esc(w.person||"—")}${w.organisation?`<div class="mono" style="font-size:10.5px;color:var(--faint)">${esc(w.organisation)}</div>`:""}</td>
+      <td>${esc(w.person||"—")}${t.cloud?`<div class="mono" style="font-size:10px;color:${t.cloud.status==="done"?"var(--ok)":"var(--accent)"}">☁ ${esc(t.cloud.status.replace("_"," ").toUpperCase())}${t.cloud.comments?` · ${t.cloud.comments} comment${t.cloud.comments===1?"":"s"}`:""}</div>`:""}${w.organisation?`<div class="mono" style="font-size:10.5px;color:var(--faint)">${esc(w.organisation)}</div>`:""}</td>
       <td class="mono" style="font-size:11.5px">${esc(fmtDate(w.delegatedDate)||"—")}</td>
       <td class="mono" style="font-size:11.5px">${esc(fmtDate(w.expectedDate)||"—")}</td>
       <td class="mono" style="font-size:11.5px;color:${over?"var(--danger)":"var(--muted)"}">${esc(fmtDate(w.followUpDate)||"—")}${w.lastFollowUp?`<div style="color:var(--faint)">last ${esc(fmtDate(w.lastFollowUp))}</div>`:""}</td>
@@ -1257,6 +1257,189 @@ UI.review = function(){
 };
 
 /* ---------------- SETTINGS / DATA ---------------- */
+/* ============================================================
+   CLOUD MODULE — Supabase (accounts, delegation, money ledger)
+   ============================================================ */
+const CLOUD = {
+  url: "https://ejlsbydsqjbxfwmvlapm.supabase.co",
+  key: "sb_publishable_hB7hrrTkLMNh6FrH_FTUSg_cxIlM9Nt"
+};
+const CloudService = {
+  session: null,
+  load(){ try{ this.session=JSON.parse(localStorage.getItem("gtdcc-cloud")||"null"); }catch(e){ this.session=null; } return this.session; },
+  store(s){ this.session=s; if(s) localStorage.setItem("gtdcc-cloud",JSON.stringify(s)); else localStorage.removeItem("gtdcc-cloud"); },
+  signedIn(){ return !!(this.session&&this.session.access_token); },
+  me(){ return this.session&&this.session.user; },
+  async auth(path,body){
+    const r=await fetch(`${CLOUD.url}/auth/v1/${path}`,{method:"POST",headers:{apikey:CLOUD.key,"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.msg||d.error_description||d.message||"Sign in failed");
+    return d;
+  },
+  async signIn(email,password){
+    const d=await this.auth("token?grant_type=password",{email,password});
+    this.store({access_token:d.access_token,refresh_token:d.refresh_token,user:d.user});
+    return d.user;
+  },
+  async signUp(email,password){
+    const d=await this.auth("signup",{email,password});
+    if(d.access_token){ this.store({access_token:d.access_token,refresh_token:d.refresh_token,user:d.user}); return {ok:true,confirmed:true}; }
+    return {ok:true,confirmed:false};
+  },
+  signOut(){ this.store(null); },
+  async refresh(){
+    if(!this.session||!this.session.refresh_token) return false;
+    try{
+      const d=await this.auth("token?grant_type=refresh_token",{refresh_token:this.session.refresh_token});
+      this.store({access_token:d.access_token,refresh_token:d.refresh_token,user:d.user});
+      return true;
+    }catch(e){ this.store(null); return false; }
+  },
+  async api(path,opts,retried){
+    opts=opts||{};
+    const r=await fetch(`${CLOUD.url}/rest/v1/${path}`,{
+      method:opts.method||"GET",
+      headers:Object.assign({apikey:CLOUD.key,Authorization:"Bearer "+this.session.access_token,"Content-Type":"application/json",Prefer:opts.prefer||"return=representation"},opts.headers||{}),
+      body:opts.body?JSON.stringify(opts.body):undefined
+    });
+    if(r.status===401&&!retried&&await this.refresh()) return this.api(path,opts,true);
+    if(!r.ok){ const t=await r.text(); throw new Error("Cloud error: "+t.slice(0,180)); }
+    return r.status===204?null:r.json();
+  },
+  async people(){ return this.api("profiles?select=id,email,display_name&order=display_name"); },
+  async delegate(task,assigneeId,note,due){
+    const rows=await this.api("cloud_tasks",{method:"POST",body:{
+      owner_id:this.me().id, assignee_id:assigneeId, title:task.title,
+      notes:note||task.description||null, due_date:due||task.dueDate||null,
+      priority:task.priority||"normal", local_ref:task.id
+    }});
+    return rows[0];
+  },
+  async pull(){
+    const rows=await this.api(`cloud_tasks?owner_id=eq.${this.me().id}&select=id,status,assignee_id,updated_at,comments`);
+    let changed=0;
+    (AppState.data.tasks||[]).forEach(t=>{
+      if(!t.cloud||!t.cloud.id) return;
+      const r=rows.find(x=>x.id===t.cloud.id);
+      if(r&&(t.cloud.status!==r.status||(t.cloud.comments||0)!==(r.comments||[]).length)){
+        t.cloud.status=r.status; t.cloud.comments=(r.comments||[]).length; t.updatedAt=nowISO(); changed++;
+      }
+    });
+    if(changed){ markDirty(); }
+    return changed;
+  },
+  async ledger(){
+    return this.api(`transactions?ledger_owner_id=eq.${this.me().id}&select=*,person:person_id(email,display_name)&order=created_at.desc`);
+  },
+  async addFloat(personId,amount,currency,desc){
+    return this.api("transactions",{method:"POST",body:{
+      ledger_owner_id:this.me().id, person_id:personId, type:"float",
+      amount:amount, currency:currency||"USD", description:desc||null, created_by:this.me().id
+    }});
+  },
+  balances(rows){
+    const by={};
+    rows.forEach(r=>{
+      const k=(r.person&&(r.person.display_name||r.person.email))||r.person_id;
+      const c=r.currency||"USD";
+      by[k]=by[k]||{}; by[k][c]=(by[k][c]||0)+(r.type==="float"?1:-1)*parseFloat(r.amount);
+    });
+    return by;
+  },
+  async receiptUrl(path){
+    const r=await fetch(`${CLOUD.url}/storage/v1/object/sign/receipts/${path}`,{method:"POST",headers:{apikey:CLOUD.key,Authorization:"Bearer "+this.session.access_token,"Content-Type":"application/json"},body:JSON.stringify({expiresIn:3600})});
+    const d=await r.json();
+    if(!r.ok||!d.signedURL) throw new Error("Could not open receipt");
+    return CLOUD.url+"/storage/v1"+d.signedURL;
+  }
+};
+CloudService.load();
+
+function cloudCardHTML(){
+  const s=CloudService.signedIn();
+  return `<div class="card"><h2><span class="eyebrow">Cloud &amp; delegation</span></h2>
+    ${s?`
+      <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px">Signed in as <b>${esc(CloudService.me().email)}</b>. You can delegate tasks to other people from the task drawer, track them under Waiting for, and manage floats and spending below.</p>
+      <div class="modalfoot" style="justify-content:flex-start">
+        <button class="btn" id="cloudSync">Sync now</button>
+        <button class="btn" id="cloudMoney">Money ledger</button>
+        <button class="btn ghost" id="cloudOut">Sign out</button>
+      </div>`
+    :`
+      <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px">Sign in to delegate tasks to other people (they use the companion Tasks app) and to manage money floats and receipts.</p>
+      <div class="field"><label>Email</label><input id="cloudEmail" type="email" autocomplete="username"></div>
+      <div class="field"><label>Password</label><input id="cloudPass" type="password" autocomplete="current-password"></div>
+      <div class="modalfoot" style="justify-content:flex-start">
+        <button class="btn primary" id="cloudIn">Sign in</button>
+        <button class="btn" id="cloudUp">Create account</button>
+      </div>`}
+  </div>`;
+}
+async function openLedgerModal(){
+  try{
+    const [rows,people]=await Promise.all([CloudService.ledger(),CloudService.people()]);
+    const bal=CloudService.balances(rows);
+    const fmt=(n)=>{const v=Math.round(n*100)/100; return (v<0?"−":"")+Math.abs(v).toFixed(2);};
+    const others=people.filter(p=>p.id!==CloudService.me().id);
+    $("#modalHost").innerHTML=`<div class="overlay" id="ovLedger"><div class="modal" style="max-width:640px">
+      <h2><span class="eyebrow">Money ledger</span></h2>
+      ${Object.keys(bal).length?`<table class="plain" style="margin-bottom:12px"><thead><tr><th>Person</th><th style="text-align:right">Balance</th></tr></thead><tbody>
+        ${Object.keys(bal).map(k=>`<tr><td style="font-size:12.5px">${esc(k)}</td><td class="mono" style="text-align:right;font-size:12px">${Object.keys(bal[k]).map(c=>{const v=bal[k][c];return `<span style="color:${v<0?"var(--danger)":"var(--muted)"}">${esc(c)} ${fmt(v)}${v<0?" (you owe)":""}</span>`;}).join("<br>")}</td></tr>`).join("")}
+      </tbody></table>`:`<p style="color:var(--muted);font-size:12.5px">No transactions yet.</p>`}
+      <h2 style="margin-top:6px"><span class="eyebrow">Give float</span></h2>
+      <div class="fieldrow">
+        <div class="field"><label>Person</label><select id="flPerson">${others.map(p=>`<option value="${esc(p.id)}">${esc(p.display_name||p.email)}</option>`).join("")}</select></div>
+        <div class="field"><label>Amount</label><input id="flAmount" type="number" min="0.01" step="0.01"></div>
+      </div>
+      <div class="fieldrow">
+        <div class="field"><label>Currency</label><select id="flCur"><option>USD</option><option>GBP</option><option>ZWG</option><option>EUR</option><option>ZAR</option></select></div>
+        <div class="field"><label>Note</label><input id="flDesc" placeholder="e.g. Cash given 16 July"></div>
+      </div>
+      <h2 style="margin-top:6px"><span class="eyebrow">Recent entries</span></h2>
+      <div style="max-height:200px;overflow:auto">${rows.length?`<table class="plain"><tbody>
+        ${rows.slice(0,30).map(r=>`<tr><td class="mono" style="font-size:11px;white-space:nowrap">${esc(fmtDate(r.created_at.slice(0,10)))}</td><td style="font-size:12px">${esc((r.person&&(r.person.display_name||r.person.email))||"")}</td><td style="font-size:12px">${r.type==="float"?"Float":"Spend"}${r.description?" — "+esc(r.description):""}${r.receipt_path?` <a href="#" data-receipt="${esc(r.receipt_path)}" style="color:var(--accent)">receipt</a>`:""}</td><td class="mono" style="text-align:right;font-size:12px;color:${r.type==="spend"?"var(--danger)":"var(--muted)"}">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</td></tr>`).join("")}
+      </tbody></table>`:""}</div>
+      <div class="modalfoot"><button class="btn" id="flClose">Close</button><button class="btn primary" id="flGive" ${others.length?"":"disabled"}>Record float</button></div>
+    </div></div>`;
+    $("#flClose").onclick=closeModal;
+    $("#ovLedger").addEventListener("click",e=>{ if(e.target.id==="ovLedger") closeModal(); });
+    $$("#modalHost [data-receipt]").forEach(a=>a.onclick=async(e)=>{e.preventDefault(); try{ const u=await CloudService.receiptUrl(a.dataset.receipt); window.open(u,"_blank"); }catch(err){ toast(err.message,"warn"); }});
+    $("#flGive").onclick=async()=>{
+      const amt=parseFloat($("#flAmount").value);
+      if(!amt||amt<=0){ toast("Enter a valid amount","warn"); return; }
+      try{ await CloudService.addFloat($("#flPerson").value,amt,$("#flCur").value,$("#flDesc").value.trim()); toast("Float recorded","ok"); openLedgerModal(); }
+      catch(err){ toast(err.message,"warn"); }
+    };
+  }catch(err){ toast(err.message,"warn"); }
+}
+function openDelegateModal(taskId){
+  const t=TaskService.get(taskId); if(!t) return;
+  CloudService.people().then(people=>{
+    const others=people.filter(p=>p.id!==CloudService.me().id);
+    if(!others.length){ toast("No other people have accounts yet","warn"); return; }
+    $("#modalHost").innerHTML=`<div class="overlay" id="ovDel"><div class="modal" style="max-width:480px">
+      <h2><span class="eyebrow">Delegate task</span></h2>
+      <p style="font-size:13px;margin-bottom:10px"><b>${esc(t.title)}</b></p>
+      <div class="field"><label>Send to</label><select id="dlPerson">${others.map(p=>`<option value="${esc(p.id)}" data-email="${esc(p.email)}">${esc(p.display_name||p.email)}</option>`).join("")}</select></div>
+      <div class="field"><label>Note for them</label><textarea id="dlNote" rows="3">${esc(t.description||"")}</textarea></div>
+      <div class="field"><label>Due date</label><input id="dlDue" type="date" value="${esc(t.dueDate||"")}"></div>
+      <div class="modalfoot"><button class="btn" id="dlCancel">Cancel</button><button class="btn primary" id="dlSend">Send task</button></div>
+    </div></div>`;
+    $("#dlCancel").onclick=closeModal;
+    $("#ovDel").addEventListener("click",e=>{ if(e.target.id==="ovDel") closeModal(); });
+    $("#dlSend").onclick=async()=>{
+      const sel=$("#dlPerson"); const email=sel.options[sel.selectedIndex].dataset.email;
+      try{
+        const row=await CloudService.delegate(t,sel.value,$("#dlNote").value.trim(),$("#dlDue").value||null);
+        TaskService.update(t.id,{status:"waiting",clarified:true,
+          waitingFor:Object.assign({},t.waitingFor||{},{person:email,delegatedDate:todayStr(),expectedDate:$("#dlDue").value||t.waitingFor?.expectedDate||null})});
+        const t2=TaskService.get(t.id); t2.cloud={id:row.id,assignee:email,status:row.status,comments:0}; markDirty();
+        closeModal(); render(); toast("Task sent to "+email,"ok");
+      }catch(err){ toast(err.message,"warn"); }
+    };
+  }).catch(err=>toast(err.message,"warn"));
+}
+
 UI.settings = function(){
   const m=AppState.data.metadata;
   const modeName={live:"Connected (live file)",readonly:"Read only",cached:"Cached copy",demo:"Demo mode"}[AppState.storageMode];
@@ -1298,6 +1481,7 @@ UI.settings = function(){
       <div class="field"><label>Contexts (comma separated)</label><input id="prefContexts" value="${esc(AppState.data.contexts.join(", "))}"></div>
       <div class="field"><label>Areas of responsibility (comma separated)</label><input id="prefAreas" value="${esc(AppState.data.areas.map(a=>a.name).join(", "))}"></div>
       <button class="btn" id="prefSaveLists">Apply</button></div>
+    ${cloudCardHTML()}
   </div>
   <div class="card" style="margin-top:14px"><h2><span class="eyebrow">GTD health check</span></h2>${healthTableHTML()}</div>`;
 };
@@ -1381,7 +1565,7 @@ UI.taskDrawer = function(id){
     <div class="mono" style="font-size:10.5px;color:var(--faint);margin-top:12px">Created ${esc(fmtDT(t.createdAt))} · Updated ${esc(fmtDT(t.updatedAt))}${t.completedAt?" · Completed "+esc(fmtDT(t.completedAt)):""}</div>
     <div class="modalfoot">
       <div class="left"><button class="btn danger sm" id="tdDelete">Delete</button>
-      <button class="btn sm" id="tdConvert">Convert to project</button></div>
+      <button class="btn sm" id="tdConvert">Convert to project</button>${CloudService.signedIn()&&!t.cloud?`<button class="btn sm" id="tdDelegate">Delegate…</button>`:""}${t.cloud?`<span class="mono" style="font-size:10.5px;color:var(--accent);align-self:center">☁ ${esc(t.cloud.assignee)} · ${esc(t.cloud.status.replace("_"," "))}</span>`:""}</div>
       <button class="btn sm ${t.status==="completed"?"":"primary"}" id="tdComplete">${t.status==="completed"?"Reopen":"Complete"}</button>
       <button class="btn primary sm" id="tdSave">Save</button>
     </div>
@@ -1402,6 +1586,7 @@ UI.taskDrawer = function(id){
     });
   };
   $("#tdSave").onclick=()=>{save(); closeModal(); render(); toast("Saved","ok");};
+  const tdD=$("#tdDelegate"); if(tdD) tdD.onclick=()=>{ save(); openDelegateModal(id); };
   $("#tdComplete").onclick=()=>{save(); if(TaskService.get(id).status==="completed"){TaskService.update(id,{status:"next",completedAt:null});}else{TaskService.complete(id);} closeModal(); render();};
   $("#tdDelete").onclick=()=>{closeModal(); TaskService.remove(id); render();};
   $("#tdConvert").onclick=()=>{
@@ -1653,6 +1838,7 @@ function bindView(){
   }
   if(v==="waiting"){
     const nb=$("#newWaitBtn"); if(nb) nb.onclick=()=>UI.captureModal({status:"waiting",clarified:true});
+    const ws=$("#waitSync"); if(ws) ws.onclick=async()=>{ try{ const n=await CloudService.pull(); toast(n?n+" update"+(n===1?"":"s")+" from cloud":"Up to date","ok"); render(); }catch(err){ toast(err.message,"warn"); } };
     $$("#view [data-followup]").forEach(b=>b.addEventListener("click",e=>{
       e.stopPropagation();
       const t=TaskService.get(b.dataset.followup); const w=t.waitingFor||{};
@@ -1699,6 +1885,20 @@ function bindView(){
   }
   if(v==="settings"){
     $("#setSaveNow").onclick=()=>DataProvider.save(true);
+    const cIn=$("#cloudIn");
+    if(cIn) cIn.onclick=async()=>{
+      try{ await CloudService.signIn($("#cloudEmail").value.trim(),$("#cloudPass").value); toast("Signed in","ok"); render(); }
+      catch(err){ toast(err.message,"warn"); }
+    };
+    const cUp=$("#cloudUp");
+    if(cUp) cUp.onclick=async()=>{
+      try{ const r=await CloudService.signUp($("#cloudEmail").value.trim(),$("#cloudPass").value);
+        toast(r.confirmed?"Account created and signed in":"Account created \u2014 check your email to confirm, then sign in","ok"); render(); }
+      catch(err){ toast(err.message,"warn"); }
+    };
+    const cOut=$("#cloudOut"); if(cOut) cOut.onclick=()=>{ CloudService.signOut(); toast("Signed out","ok"); render(); };
+    const cSync=$("#cloudSync"); if(cSync) cSync.onclick=async()=>{ try{ const n=await CloudService.pull(); toast(n?n+" update"+(n===1?"":"s")+" from cloud":"Up to date","ok"); render(); }catch(err){ toast(err.message,"warn"); } };
+    const cMon=$("#cloudMoney"); if(cMon) cMon.onclick=openLedgerModal;
     $("#setReconnect").onclick=()=>DataProvider.reconnect();
     const dl=$("#setDownload"); if(dl) dl.onclick=()=>DataProvider.save(true);
     $("#setExport").onclick=()=>{downloadJSON(AppState.data,"gtd-backup-"+backupStamp()+".json"); toast("Backup exported","ok");};
@@ -1805,7 +2005,12 @@ document.addEventListener("DOMContentLoaded", async ()=>{
 
   // Try automatic reconnection / same-folder fetch
   const connected = await DataProvider.initialise();
-  if(connected){ enterApp(); }
+  if(connected){
+    enterApp();
+    if(CloudService.signedIn()){
+      CloudService.pull().then(n=>{ if(n){ render(); toast(n+" update"+(n===1?"":"s")+" from cloud","ok"); } }).catch(()=>{});
+    }
+  }
   else{
     // Offer local backup restore on setup screen if one exists
     const p=await BackupService.loadLocal();
