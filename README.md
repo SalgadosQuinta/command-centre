@@ -17,3 +17,10 @@ Personal productivity platform built on the Getting Things Done method.
 Single self-contained `index.html` — no frameworks, no build step, no external dependencies.
 
 Deployed via GitHub Pages from the `main` branch.
+
+## Tests
+```
+npm install jsdom
+node tests/run-tests.js
+```
+Covers: script syntax, esc/XSS, Tasks app task rendering (incl. attachments), CloudService refresh-on-401, and the person-view task add/edit modal end to end with mocked fetch. Extend `tests/run-tests.js` when adding features.
