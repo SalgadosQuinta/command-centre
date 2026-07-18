@@ -269,6 +269,13 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
 .projcard .warnflag{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--danger);border:1px solid var(--danger);border-radius:4px;padding:1px 6px}
 .pbar{height:5px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:10px}
 .pbar i{display:block;height:100%;background:var(--ok)}
+.navsec{cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between}
+.navsec .chev{transition:transform .15s;font-size:9px}
+.navsec.folded .chev{transform:rotate(-90deg)}
+.navbtn.navfolded{display:none}
+.navfoldall{margin-top:auto;padding:8px 0 4px;display:flex;gap:10px}
+.navfoldall button{appearance:none;border:0;background:none;color:var(--faint);cursor:pointer;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase}
+.navfoldall button:hover{color:var(--accent)}
 </style>
 </head>
 <body>
@@ -335,6 +342,7 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
     <button class="navbtn" title="Daily scan and the 10-step weekly review" data-view="review"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>Review<span class="cnt" id="cntReview"></span></button>
     <div class="navsec eyebrow">System</div>
     <button class="navbtn" title="File connection, backups, cloud account and preferences" data-view="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>Data &amp; settings</button>
+    <div class="navfoldall"><button id="navFoldAll">Fold all</button><button id="navUnfoldAll">Unfold all</button></div>
     <div class="railfoot"><span class="eyebrow"><span class="kbd">Ctrl+K</span> commands</span></div>
   </nav>
 
@@ -2292,6 +2300,15 @@ function openClientEditor(id){
   };
 }
 /* ---------------- FINANCE ---------------- */
+/* An income entry only counts as money you can expect when it is agreed:
+   manually confirmed, invoiced, or linked to a client already at stage "won". */
+function financeIsConfirmed(x, clientStageByName){
+  if(x.confirmed === true) return true;
+  if(x.confirmed === false) return false;
+  if(x.status === "invoiced") return true;
+  const st = x.client && clientStageByName ? clientStageByName[String(x.client).toLowerCase()] : null;
+  return st === "won";
+}
 const FinanceService = {
   data(){ const d=AppState.data; d.finance=d.finance||{income:[],outgoings:[]}; d.finance.income=d.finance.income||[]; d.finance.outgoings=d.finance.outgoings||[]; return d.finance; },
   addIncome(x){ const n=Object.assign({id:uid("inc"),name:"",client:"",amount:0,currency:"USD",expectedDate:todayStr(),status:"expected",recurring:"none",notes:"",createdAt:nowISO()},x); this.data().income.unshift(n); markDirty(); return n; },
@@ -2323,12 +2340,29 @@ const FinanceService = {
     } else { x.status="received"; x.receivedOn=todayStr(); }
     markDirty();
   },
-  // sums within [today, today+days), per currency
-  expectedIn(days){
-    const from=todayStr(); const to=addDays(from,days);
-    const out={};
+  clientStages(){
+    const m={};
+    (AppState.data.clients||[]).forEach(c=>{ if(c.name) m[String(c.name).toLowerCase()]=c.stage; });
+    return m;
+  },
+  isConfirmed(x){ return financeIsConfirmed(x, this.clientStages()); },
+  // total of unconfirmed (proposal-stage) pipeline, any date, per currency
+  pipelineUnconfirmed(){
+    const out={}; const st=this.clientStages();
     this.data().income.forEach(x=>{
       if(x.status==="received") return;
+      if(financeIsConfirmed(x, st)) return;
+      out[x.currency]=(out[x.currency]||0)+parseFloat(x.amount||0);
+    });
+    return out;
+  },
+  // sums within [today, today+days), per currency — CONFIRMED money only
+  expectedIn(days){
+    const from=todayStr(); const to=addDays(from,days);
+    const out={}; const st=this.clientStages();
+    this.data().income.forEach(x=>{
+      if(x.status==="received") return;
+      if(!financeIsConfirmed(x, st)) return;
       let d=x.expectedDate, guard=0;
       while(d&&d<to&&guard++<24){
         if(d>=from){ out[x.currency]=(out[x.currency]||0)+parseFloat(x.amount||0); }
@@ -2425,6 +2459,7 @@ UI.finance = function(){
   const f=FinanceService.data();
   const tStr=todayStr();
   const in30=FinanceService.expectedIn(30), in60=FinanceService.expectedIn(60), out30=FinanceService.committedOut(30);
+  const pipe=FinanceService.pipelineUnconfirmed();
   const net={}; Object.keys(in30).forEach(c=>net[c]=(net[c]||0)+in30[c]); Object.keys(out30).forEach(c=>net[c]=(net[c]||0)-out30[c]);
   const income=f.income.slice().sort((a,b)=>(a.status==="received")-(b.status==="received")||String(a.expectedDate).localeCompare(String(b.expectedDate)));
   const outs=f.outgoings.filter(x=>!x.paid).slice().sort((a,b)=>String(a.dueDate).localeCompare(String(b.dueDate)));
@@ -2434,14 +2469,15 @@ UI.finance = function(){
   <div class="viewhead"><div><h1>Finance</h1><div class="sub">Revenue you're driving towards, and what's committed to go out</div></div>
     <div class="viewactions"><button class="btn ghost" id="finPin" title="Protect this view with a 4-digit PIN">${AppState.data.settings.financePin?"🔒 PIN":"Set PIN"}</button><button class="btn" id="finAddOut">+ Payment to make</button><button class="btn primary" id="finAddInc">+ Expected revenue</button></div></div>
   <div class="grid c4" style="margin-bottom:16px">
-    <div class="card"><div class="eyebrow">Expected in — 30 days</div>${sumsHTML(in30,"nothing yet")}${FXService.approxHTML(in30)}</div>
-    <div class="card"><div class="eyebrow">Expected in — 60 days</div>${sumsHTML(in60,"nothing yet")}${FXService.approxHTML(in60)}</div>
+    <div class="card"><div class="eyebrow">Confirmed in — 30 days</div>${sumsHTML(in30,"nothing confirmed")}${FXService.approxHTML(in30)}</div>
+    <div class="card"><div class="eyebrow">Confirmed in — 60 days</div>${sumsHTML(in60,"nothing confirmed")}${FXService.approxHTML(in60)}</div>
     <div class="card"><div class="eyebrow">Committed out — 30 days</div>${sumsHTML(out30,"nothing")}${FXService.approxHTML(out30)}</div>
     <div class="card"><div class="eyebrow">Net — 30 days</div>${(()=>{const ks=Object.keys(net);return ks.length?ks.map(c=>`<div style="font-size:20px;font-weight:650;font-family:var(--mono);color:${net[c]<0?"var(--danger)":"var(--ok)"}">${money(c,net[c])}</div>`).join(""):`<div style="font-size:20px;font-weight:650;font-family:var(--mono);color:var(--faint)">—</div>`;})()}</div>
   </div>
   <div class="grid c2">
     <div class="card">
-      <h2><span class="eyebrow">Revenue pipeline</span></h2>
+      <h2 style="display:flex;justify-content:space-between;align-items:baseline"><span class="eyebrow">Revenue pipeline</span>
+        <span class="mono" style="font-size:10.5px;color:var(--faint)">${Object.keys(pipe).length?"unconfirmed proposals: "+Object.keys(pipe).map(c=>money(c,pipe[c])).join(" · ")+" (not counted above)":"all entries confirmed"}</span></h2>
       ${income.length?income.map(x=>`
         <div style="padding:9px 0;border-bottom:1px solid var(--line);${x.status==="received"?"opacity:.55":""}">
           <div style="display:flex;justify-content:space-between;gap:8px">
@@ -2449,10 +2485,11 @@ UI.finance = function(){
             <span class="mono" style="font-size:12.5px;white-space:nowrap">${money(x.currency,parseFloat(x.amount||0))}</span>
           </div>
           <div class="mono" style="font-size:10.5px;color:${x.status!=="received"&&x.expectedDate<tStr?"var(--danger)":"var(--faint)"};margin-top:3px">
-            ${x.status==="received"?"received "+esc(fmtDate(x.receivedOn||x.expectedDate)):"expected "+esc(fmtDate(x.expectedDate))+(x.expectedDate<tStr?" · late":"")} · ${esc(x.status)}</div>
+            ${x.status==="received"?"received "+esc(fmtDate(x.receivedOn||x.expectedDate)):"expected "+esc(fmtDate(x.expectedDate))+(x.expectedDate<tStr?" · late":"")} · ${esc(x.status)} · ${FinanceService.isConfirmed(x)?'<span style="color:var(--ok)">confirmed</span>':'<span style="color:var(--warn,#d9a03d)">proposal — not counted</span>'}</div>
           ${x.status!=="received"?`<div class="row" style="margin-top:6px">
             <button class="btn sm" data-received="${esc(x.id)}">Mark received</button>
             ${x.status==="expected"?`<button class="btn sm ghost" data-invoiced="${esc(x.id)}">Mark invoiced</button>`:""}
+            <button class="btn sm ghost" data-confirm="${esc(x.id)}">${FinanceService.isConfirmed(x)?"Unconfirm":"Confirm ✓"}</button>
             <button class="btn sm ghost" data-editinc="${esc(x.id)}">Edit</button>
             <button class="btn sm ghost" data-delinc="${esc(x.id)}" style="color:var(--danger)">Delete</button></div>`
           :`<div class="row" style="margin-top:6px"><button class="btn sm ghost" data-delinc="${esc(x.id)}" style="color:var(--danger)">Delete</button></div>`}
@@ -3071,6 +3108,7 @@ function bindView(){
   const fo=$("#finAddOut"); if(fo) fo.onclick=()=>openOutgoingEditor();
   $$("#view [data-received]").forEach(b=>b.onclick=()=>{ FinanceService.markReceived(b.dataset.received); render(); toast("Marked received","ok"); });
   $$("#view [data-invoiced]").forEach(b=>b.onclick=()=>{ FinanceService.update("income",b.dataset.invoiced,{status:"invoiced"}); render(); });
+  $$("#view [data-confirm]").forEach(b=>b.onclick=()=>{ const x=FinanceService.get("income",b.dataset.confirm); if(x){ FinanceService.update("income",x.id,{confirmed:!FinanceService.isConfirmed(x)}); render(); } });
   $$("#view [data-editinc]").forEach(b=>b.onclick=()=>openIncomeEditor(b.dataset.editinc));
   $$("#view [data-delinc]").forEach(b=>b.onclick=()=>{ if(confirm("Delete this revenue entry?")){ FinanceService.remove("income",b.dataset.delinc); render(); } });
   $$("#view [data-paid]").forEach(b=>b.onclick=()=>{ FinanceService.markPaid(b.dataset.paid); render(); toast("Marked paid","ok"); });
@@ -3380,6 +3418,52 @@ document.addEventListener("DOMContentLoaded", async ()=>{
     }
   }
 });
+
+/* Collapsible rail sections — state persisted per device */
+(function(){
+  const KEY="gtd_navfold";
+  function secName(el){ return el.textContent.replace("▾","").trim(); }
+  function load(){ try{ return JSON.parse(localStorage.getItem(KEY)||"[]"); }catch(e){ return []; } }
+  function save(list){ localStorage.setItem(KEY, JSON.stringify(list)); }
+  function apply(){
+    const folded=load();
+    document.querySelectorAll(".rail .navsec").forEach(sec=>{
+      const name=secName(sec);
+      const isFolded=folded.includes(name);
+      sec.classList.toggle("folded", isFolded);
+      let el=sec.nextElementSibling;
+      while(el && !el.classList.contains("navsec") && !el.classList.contains("navfoldall")){
+        if(el.classList.contains("navbtn")) el.classList.toggle("navfolded", isFolded);
+        el=el.nextElementSibling;
+      }
+    });
+  }
+  function toggle(name){
+    const folded=load();
+    const i=folded.indexOf(name);
+    if(i>=0) folded.splice(i,1); else folded.push(name);
+    save(folded); apply();
+  }
+  window.navFoldEnsureVisible=function(view){
+    const btn=document.querySelector('.rail .navbtn[data-view="'+view+'"]');
+    if(!btn || !btn.classList.contains("navfolded")) return;
+    let el=btn;
+    while(el && !el.classList.contains("navsec")) el=el.previousElementSibling;
+    if(el){ const folded=load(); const i=folded.indexOf(secName(el)); if(i>=0){ folded.splice(i,1); save(folded); apply(); } }
+  };
+  function init(){
+    document.querySelectorAll(".rail .navsec").forEach(sec=>{
+      if(sec.querySelector(".chev")) return;
+      sec.insertAdjacentHTML("beforeend",'<span class="chev">▾</span>');
+      sec.addEventListener("click",()=>toggle(secName(sec)));
+    });
+    const fa=document.getElementById("navFoldAll"), ua=document.getElementById("navUnfoldAll");
+    if(fa) fa.onclick=()=>{ save([...document.querySelectorAll(".rail .navsec")].map(secName)); apply(); };
+    if(ua) ua.onclick=()=>{ save([]); apply(); };
+    apply();
+  }
+  if(document.readyState!=="loading") init(); else document.addEventListener("DOMContentLoaded", init);
+})();
 </script>
 </body>
 </html>

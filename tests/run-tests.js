@@ -194,6 +194,42 @@ function extractObj(src, name){
     assert(gtd.includes('id="goMetric"'), 'goal editor has money metric select');
   }
 
+
+  console.log('--- Revenue: confirmed vs proposal ---');
+  {
+    const fn = extractFn(gtdSrc, 'financeIsConfirmed');
+    const isConf = new Function(fn + '\nreturn financeIsConfirmed;')();
+    const stages = {'acme':'won','beta co':'proposal'};
+    assert(isConf({status:'expected', client:'Acme'}, stages) === true, 'client at stage won counts as confirmed');
+    assert(isConf({status:'expected', client:'Beta Co'}, stages) === false, 'proposal-stage client not counted');
+    assert(isConf({status:'invoiced', client:'Beta Co'}, stages) === true, 'invoiced always confirmed');
+    assert(isConf({status:'expected'}, stages) === false, 'unlinked entry defaults to proposal');
+    assert(isConf({status:'expected', confirmed:true}, stages) === true, 'manual confirm wins');
+    assert(isConf({status:'invoiced', confirmed:false}, stages) === false, 'manual unconfirm overrides even invoiced');
+  }
+
+  console.log('--- Rail: collapsible sections ---');
+  {
+    const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    assert(gtd.includes('navFoldEnsureVisible'), 'fold logic present with view auto-unfold');
+    assert(gtd.includes('id="navFoldAll"') && gtd.includes('id="navUnfoldAll"'), 'fold-all / unfold-all controls present');
+    // functional: jsdom with a stub rail
+    const dom = new JSDOM('<nav class="rail"><div class="navsec">Do</div><button class="navbtn" data-view="next">Next</button><div class="navsec">Money</div><button class="navbtn" data-view="finance">Fin</button><div class="navfoldall"><button id="navFoldAll">f</button><button id="navUnfoldAll">u</button></div></nav>', {url:'https://x.test/', runScripts:'outside-only'});
+    const iife = gtdSrc.slice(gtdSrc.indexOf('/* Collapsible rail sections'));
+    dom.window.eval(iife);
+    const d = dom.window.document;
+    d.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
+    assert(d.querySelectorAll('.rail .chev').length === 2, 'chevrons added to section headers');
+    d.querySelectorAll('.rail .navsec')[0].dispatchEvent(new dom.window.Event('click'));
+    assert(d.querySelector('[data-view="next"]').classList.contains('navfolded'), 'clicking a section folds its buttons');
+    assert(!d.querySelector('[data-view="finance"]').classList.contains('navfolded'), 'other sections unaffected');
+    assert(JSON.parse(dom.window.localStorage.getItem('gtd_navfold')).includes('Do'), 'fold state persisted');
+    d.getElementById('navUnfoldAll').onclick();
+    assert(!d.querySelector('[data-view="next"]').classList.contains('navfolded'), 'unfold all restores buttons');
+    dom.window.navFoldEnsureVisible && (d.querySelectorAll('.rail .navsec')[1].dispatchEvent(new dom.window.Event('click')), dom.window.navFoldEnsureVisible('finance'));
+    assert(!d.querySelector('[data-view="finance"]').classList.contains('navfolded'), 'navigating to a view auto-unfolds its section');
+  }
+
   console.log('--- Static: wiring present in built files ---');
   {
     const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
