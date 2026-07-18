@@ -315,17 +315,22 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
     <div class="navsec eyebrow">Process</div>
     <button class="navbtn" title="Capture everything that has your attention, decide later" data-view="inbox"><svg viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l2 3h4l2-3h5"/></svg>Inbox<span class="cnt" id="cntInbox"></span></button>
     <button class="navbtn" title="Process the inbox one item at a time to zero" data-view="clarify"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 1 4 12.7V17H8v-2.3A7 7 0 0 1 12 2z"/></svg>Clarify<span class="cnt" id="cntClarify"></span></button>
-    <div class="navsec eyebrow">Organise</div>
+    <div class="navsec eyebrow">Do</div>
     <button class="navbtn" title="Concrete next actions, grouped by context" data-view="next"><svg viewBox="0 0 24 24"><path d="M5 4l14 8-14 8z"/></svg>Next actions<span class="cnt" id="cntNext"></span></button>
     <button class="navbtn" title="Anything needing more than one action — each must have a next action" data-view="projects"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Projects<span class="cnt" id="cntProjects"></span></button>
     <button class="navbtn" title="Everything delegated or owed to you, with follow-ups" data-view="waiting"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Waiting for<span class="cnt" id="cntWaiting"></span></button>
+    <div class="navsec eyebrow">People &amp; work</div>
     <button class="navbtn" title="Per-person view: their tasks and the money position" data-view="people"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5 5 0 0 1 6 4.5"/></svg>People</button>
     <button class="navbtn" title="Business development — clients, stages and their pipelines" data-view="clients"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/></svg>Clients</button>
-    <button class="navbtn" title="Goals with linked projects, and daily habit streaks" data-view="goals"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>Goals</button>
+    <div class="navsec eyebrow">Money</div>
     <button class="navbtn" title="Expected revenue and payments to make — your 30/60 day money picture" data-view="finance"><svg viewBox="0 0 24 24"><path d="M12 2v20M17 6.5C17 4.6 14.8 3 12 3S7 4.6 7 6.5 9.2 10 12 10s5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5"/></svg>Finance</button>
+    <a class="navbtn" href="https://money.forgiatus.com/" target="_blank" rel="noopener" title="Julius Family Money — bills, planner, debts and spaces" style="text-decoration:none"><svg viewBox="0 0 24 24"><path d="M3 10l9-7 9 7v10a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>Family Money ↗</a>
+    <div class="navsec eyebrow">Horizons</div>
+    <button class="navbtn" title="Goals with linked projects, and daily habit streaks" data-view="goals"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>Goals</button>
     <button class="navbtn" title="Ideas you are not committing to yet — reviewed weekly" data-view="someday"><svg viewBox="0 0 24 24"><path d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/></svg>Someday / Maybe<span class="cnt" id="cntSomeday"></span></button>
-    <button class="navbtn" title="Information you want to keep but never act on" data-view="reference"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4H6.5A2.5 2.5 0 0 0 4 6.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>Reference</button>
+    <div class="navsec eyebrow">Library</div>
     <button class="navbtn" title="Thinking space — meeting notes, ideas, anything that is not a task" data-view="notes"><svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>Notes</button>
+    <button class="navbtn" title="Information you want to keep but never act on" data-view="reference"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4H6.5A2.5 2.5 0 0 0 4 6.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>Reference</button>
     <div class="navsec eyebrow">Reflect</div>
     <button class="navbtn" title="Daily scan and the 10-step weekly review" data-view="review"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>Review<span class="cnt" id="cntReview"></span></button>
     <div class="navsec eyebrow">System</div>
@@ -2584,6 +2589,56 @@ const HabitService = {
   streak(x){ let n=0,d=todayStr(); if(!x.history[d]) d=addDays(d,-1); while(x.history[d]){ n++; d=addDays(d,-1); } return n; },
   remove(id){ const a=this.all(); const i=a.findIndex(x=>x.id===id); if(i>=0){ a.splice(i,1); markDirty(); } }
 };
+/* Money-linked goal metrics — pure summariser (testable) + async fill */
+function moneyMetricSummary(kind, data){
+  const fmt=(v,c)=> (c==="GBP"?"£":c==="USD"?"$":c==="EUR"?"€":c==="ZAR"?"R":c+" ")+Math.abs(v).toLocaleString("en-GB",{maximumFractionDigits:0});
+  if(kind==="debt_free"){
+    const debts=data.debts||[];
+    let bal={}, prin={};
+    debts.forEach(d=>{ bal[d.currency]=(bal[d.currency]||0)+Number(d.balance); prin[d.currency]=(prin[d.currency]||0)+Number(d.principal||d.balance); });
+    const ccys=Object.keys(bal).filter(c=>prin[c]>0);
+    if(!ccys.length) return {text:"No debts recorded — debt free ✔", pct:100, good:true};
+    const totB=ccys.reduce((a,c)=>a+bal[c],0), totP=ccys.reduce((a,c)=>a+prin[c],0);
+    const pct=Math.max(0,Math.min(100,Math.round(100*(1-totB/totP))));
+    return {text:"Owing "+ccys.map(c=>fmt(bal[c],c)).join(" · ")+" — "+pct+"% paid down", pct, good:totB===0};
+  }
+  // month nets
+  const inc={}, out={};
+  (data.income||[]).forEach(r=>{ inc[r.currency]=(inc[r.currency]||0)+Number(r.amount); });
+  (data.payments||[]).concat(data.expenses||[]).forEach(r=>{ out[r.currency]=(out[r.currency]||0)+Number(r.amount); });
+  const ccys={}; Object.keys(inc).forEach(c=>ccys[c]=1); Object.keys(out).forEach(c=>ccys[c]=1);
+  const ks=Object.keys(ccys);
+  if(!ks.length) return {text:"No activity this month yet", pct:null, good:null};
+  const parts=ks.map(c=>{ const v=(inc[c]||0)-(out[c]||0); return (v>=0?"+":"−")+fmt(v,c); });
+  const allGood=ks.every(c=>((inc[c]||0)-(out[c]||0))>=0);
+  return {text:"This month net "+parts.join(" · ")+(allGood?" — at or above break-even":" — below break-even"), pct:null, good:allGood};
+}
+async function fillGoalMetrics(){
+  const els=$$("#view [data-goalmetric]");
+  if(!els.length||!CloudService.session) return;
+  const ym=todayStr().slice(0,7), from=ym+"-01";
+  const spaceOf={farm_net:"farm",family_net:"family",business_net:"business"};
+  for(const el of els){
+    const kind=el.dataset.goalmetric;
+    try{
+      let data={};
+      if(kind==="debt_free"){
+        data.debts=await CloudService.api("fam_debts?select=balance,principal,currency&archived=eq.false")||[];
+      }else{
+        const sp=spaceOf[kind]; if(!sp){ el.textContent=""; continue; }
+        data.income=await CloudService.api(`fam_income?select=amount,currency&space=eq.${sp}&week_date=gte.${from}`)||[];
+        data.payments=await CloudService.api(`fam_bill_payments?select=amount,currency&space=eq.${sp}&paid_at=gte.${from}`)||[];
+        data.expenses=await CloudService.api(`fam_expenses?select=amount,currency&space=eq.${sp}&spent_at=gte.${from}`)||[];
+      }
+      const m=moneyMetricSummary(kind,data);
+      el.textContent="⛁ "+m.text;
+      el.style.color=m.good===true?"var(--ok)":m.good===false?"var(--danger)":"var(--faint)";
+      if(m.pct!=null){
+        el.insertAdjacentHTML("beforeend",`<div class="bar" style="height:5px;background:var(--panel2);border-radius:4px;overflow:hidden;margin-top:3px"><div style="height:100%;width:${m.pct}%;background:var(--ok)"></div></div>`);
+      }
+    }catch(e){ el.textContent="⛁ metric unavailable (check Family Money access)"; }
+  }
+}
 UI.goals = function(){
   const goals=GoalService.all(); const habits=HabitService.all(); const tStr=todayStr();
   const projProgress=g=>{
@@ -2607,6 +2662,7 @@ UI.goals = function(){
           ${pr?`<div style="margin-top:6px"><div class="bar" style="height:6px;background:var(--panel2);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.round(100*pr.done/pr.total)}%;background:var(--accent)"></div></div>
             <div class="mono" style="font-size:10px;color:var(--faint);margin-top:3px">${pr.done}/${pr.total} linked projects complete · ${pr.names.map(esc).join(", ")}</div></div>`:`<div class="mono" style="font-size:10px;color:var(--faint);margin-top:4px">no projects linked yet</div>`}
           ${g.notes?`<div style="font-size:12px;color:var(--muted);margin-top:5px">${esc(g.notes)}</div>`:""}
+          ${g.metric?`<div class="mono" id="gm-${esc(g.id)}" data-goalmetric="${esc(g.metric)}" style="font-size:11px;color:var(--faint);margin-top:5px">money metric loading…</div>`:""}
         </div>`;}).join("")
       :`<div class="empty">No goals yet. A goal is an outcome — link the projects that serve it.</div>`}
     </div>
@@ -2633,13 +2689,21 @@ function openGoalEditor(id){
       <div style="max-height:160px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:8px">
       ${projs.map(p=>`<label style="display:flex;gap:8px;align-items:center;margin:4px 0;font-size:12.5px;text-transform:none;letter-spacing:0;font-family:var(--sans);color:var(--text)"><input type="checkbox" class="goProj" value="${esc(p.id)}" ${g&&(g.projectIds||[]).includes(p.id)?"checked":""} style="width:auto">${esc(p.name)}</label>`).join("")||'<span style="color:var(--faint);font-size:12px">No projects yet</span>'}
       </div></div>
+    <div class="field"><label>Money metric (live from Family Money)</label>
+      <select id="goMetric">
+        <option value="">None</option>
+        <option value="debt_free" ${g&&g.metric==="debt_free"?"selected":""}>Debt-free progress (all debts I can see)</option>
+        <option value="farm_net" ${g&&g.metric==="farm_net"?"selected":""}>TRJ Farms — this month net (break-even)</option>
+        <option value="family_net" ${g&&g.metric==="family_net"?"selected":""}>Family — this month net</option>
+        <option value="business_net" ${g&&g.metric==="business_net"?"selected":""}>Business — this month net</option>
+      </select></div>
     <div class="field"><label>Notes</label><textarea id="goNotes" rows="3">${esc(g?g.notes:"")}</textarea></div>
     <div class="modalfoot"><button class="btn" id="goCancel">Cancel</button><button class="btn primary" id="goSave">Save</button></div>
   </div></div>`;
   $("#goCancel").onclick=closeModal;
   $("#goSave").onclick=()=>{
     const title=$("#goTitle").value.trim(); if(!title){ toast("Give the goal a title","warn"); return; }
-    const p={title,targetDate:$("#goDate").value||"",notes:$("#goNotes").value.trim(),projectIds:$$(".goProj:checked").map(x=>x.value)};
+    const p={title,targetDate:$("#goDate").value||"",notes:$("#goNotes").value.trim(),projectIds:$$(".goProj:checked").map(x=>x.value),metric:$("#goMetric").value||""};
     if(g) GoalService.update(id,p); else GoalService.create(p);
     closeModal(); render();
   };
@@ -3031,6 +3095,7 @@ function bindView(){
   const nh=$("#newHabitBtn"); if(nh) nh.onclick=()=>{ const name=prompt("Habit name (e.g. Gym):"); if(name&&name.trim()){ HabitService.create(name.trim()); render(); } };
   $$("#view [data-editgoal]").forEach(b=>b.onclick=()=>openGoalEditor(b.dataset.editgoal));
   $$("#view [data-delgoal]").forEach(b=>b.onclick=()=>{ if(confirm("Delete this goal?")){ GoalService.remove(b.dataset.delgoal); render(); } });
+  fillGoalMetrics();
   $$("#view [data-habit]").forEach(cb=>cb.onchange=()=>{ HabitService.toggle(cb.dataset.habit,todayStr()); render(); });
   $$("#view [data-delhabit]").forEach(b=>b.onclick=()=>{ if(confirm("Delete this habit and its history?")){ HabitService.remove(b.dataset.delhabit); render(); } });
   const sb=$("#smartBtn"); if(sb) sb.onclick=()=>openSmartCapture();

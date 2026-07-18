@@ -163,6 +163,37 @@ function extractObj(src, name){
     assert(Array.isArray(apiCalls[0].o.body.attachments) && apiCalls[0].o.body.attachments.length === 1, 'existing attachments preserved on edit');
   }
 
+
+  console.log('--- Goal money metrics ---');
+  {
+    const fn = extractFn(gtdSrc, 'moneyMetricSummary');
+    const moneyMetricSummary = new Function(fn + '\nreturn moneyMetricSummary;')();
+    const m1 = moneyMetricSummary('debt_free', {debts:[
+      {balance:5000, principal:20000, currency:'GBP'},
+      {balance:0, principal:10000, currency:'GBP'}]});
+    assert(m1.pct === 83 && m1.text.includes('83% paid down'), 'debt-free progress computed (25k of 30k paid = 83%)');
+    const m2 = moneyMetricSummary('debt_free', {debts:[]});
+    assert(m2.pct === 100 && m2.good === true, 'no debts = debt free');
+    const m3 = moneyMetricSummary('farm_net', {income:[{amount:5000,currency:'GBP'}],
+      payments:[{amount:2000,currency:'GBP'}], expenses:[{amount:1500,currency:'GBP'}]});
+    assert(m3.good === true && m3.text.includes('+£1,500') && m3.text.includes('break-even'), 'farm net positive = at break-even');
+    const m4 = moneyMetricSummary('farm_net', {income:[{amount:1000,currency:'GBP'}], payments:[{amount:3000,currency:'GBP'}], expenses:[]});
+    assert(m4.good === false && m4.text.includes('below break-even'), 'farm net negative flagged below break-even');
+  }
+
+  console.log('--- Rail reorganisation ---');
+  {
+    const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    ['Engage','Process','Do','People &amp; work','Money','Horizons','Library','Reflect','System'].forEach(sec=>{
+      assert(gtd.includes('>' + sec + '</div>'), 'rail section present: ' + sec.replace('&amp;','&'));
+    });
+    ['focus','calendar','inbox','clarify','next','projects','waiting','people','clients','finance','goals','someday','notes','reference','review','settings'].forEach(v=>{
+      assert((gtd.match(new RegExp('data-view="' + v + '"','g'))||[]).length >= 1, 'view button retained: ' + v);
+    });
+    assert(gtd.includes('money.forgiatus.com'), 'Family Money cross-link in Money section');
+    assert(gtd.includes('id="goMetric"'), 'goal editor has money metric select');
+  }
+
   console.log('--- Static: wiring present in built files ---');
   {
     const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
