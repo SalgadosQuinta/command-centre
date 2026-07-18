@@ -334,6 +334,7 @@ function taskHTML(t,mine){
     </div>
     <div class="meta">${mine?(t.category?esc(t.category):""):"From "+esc(t.owner?.display_name||t.owner?.email||"")}${t.due_date?` · <span class="${over?"od":""}">due ${esc(fmtD(t.due_date))}${over?" · overdue":""}</span>`:""}${t.priority&&t.priority!=="normal"?` · ${esc(t.priority)}`:""}</div>
     ${t.notes?`<div class="notes">${esc(t.notes)}</div>`:""}
+    ${(t.attachments||[]).length?`<div style="margin-bottom:7px">${(t.attachments||[]).map(a=>`<a href="#" data-receipt="${esc(a.path)}" style="color:var(--accent);font-size:12.5px;display:inline-block;margin-right:10px">📎 ${esc(a.name||"image")}</a>`).join("")}</div>`:""}
     ${comments.map(c=>`<div class="comment"><div class="who">${esc(c.who)} · ${esc(fmtD(c.at))}</div>${esc(c.text)}</div>`).join("")}
     <div class="row" style="margin-top:7px">
     ${isClosed(t)

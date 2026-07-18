@@ -1477,6 +1477,13 @@ const CloudService = {
     });
     return by;
   },
+  async uploadTaskFile(file){
+    const safe=(file.name||"image.png").replace(/[^A-Za-z0-9._-]/g,"_").slice(-60);
+    const path=`${this.me().id}/task-${Date.now()}-${safe}`;
+    const r=await fetch(`${CLOUD.url}/storage/v1/object/receipts/${path}`,{method:"POST",headers:{apikey:CLOUD.key,Authorization:"Bearer "+this.session.access_token,"Content-Type":file.type||"application/octet-stream"},body:file});
+    if(!r.ok) throw new Error("Upload failed ("+r.status+")");
+    return {path:path,name:file.name||safe};
+  },
   async receiptUrl(path){
     const r=await fetch(`${CLOUD.url}/storage/v1/object/sign/receipts/${path}`,{method:"POST",headers:{apikey:CLOUD.key,Authorization:"Bearer "+this.session.access_token,"Content-Type":"application/json"},body:JSON.stringify({expiresIn:3600})});
     const d=await r.json();
@@ -1850,6 +1857,57 @@ function genPassword(){
   const words=["Acacia","Baobab","Kudu","Msasa","Impala","Kariba","Nyanga","Savanna","Mopane","Zambezi"];
   return words[Math.floor(Math.random()*words.length)]+Math.floor(100+Math.random()*900)+"!"+words[Math.floor(Math.random()*words.length)].slice(0,3).toLowerCase();
 }
+/* Direct task add/edit under a person — skips the capture process */
+function openPersonTaskModal(sel, task){
+  const name=sel.display_name||sel.email;
+  const atts=(task&&task.attachments)||[];
+  $("#modalHost").innerHTML=`<div class="overlay" id="ovPTask"><div class="modal" style="max-width:520px">
+    <h2><span class="eyebrow">${task?"Edit task":"New task"} — ${esc(name)}</span></h2>
+    <div class="field"><label>Title</label><input id="ptTitle" value="${task?esc(task.title):""}" autocomplete="off"></div>
+    <div class="field"><label>Notes (they see these in their app)</label><textarea id="ptNotes" rows="3">${task?esc(task.notes||""):""}</textarea></div>
+    <div class="grid c2">
+      <div class="field"><label>Due date</label><input type="date" id="ptDue" value="${task&&task.due_date?esc(task.due_date):""}"></div>
+      <div class="field"><label>Priority</label><select id="ptPrio">
+        ${["low","normal","high"].map(p=>`<option value="${p}" ${((task&&task.priority)||"normal")===p?"selected":""}>${p}</option>`).join("")}</select></div>
+    </div>
+    ${task?`<div class="field"><label>Status</label><select id="ptStatus">
+      ${["sent","seen","accepted","in_progress","done","declined"].map(st=>`<option value="${st}" ${task.status===st?"selected":""}>${st.replace("_"," ")}</option>`).join("")}</select></div>`:""}
+    ${atts.length?`<div class="field"><label>Attachments</label>${atts.map(a=>`<div style="font-size:12.5px;padding:2px 0"><a href="#" data-receipt="${esc(a.path)}" style="color:var(--accent)">📎 ${esc(a.name)}</a></div>`).join("")}</div>`:""}
+    <div class="field"><label>${atts.length?"Add more screenshots / images":"Screenshots / images"}</label><input type="file" id="ptFiles" accept="image/*" multiple></div>
+    <div class="modalfoot"><button class="btn" id="ptCancel">Cancel</button><button class="btn primary" id="ptSave">${task?"Save changes":"Send task"}</button></div>
+  </div></div>`;
+  $("#ptCancel").onclick=()=>{ $("#modalHost").innerHTML=""; };
+  $$("#modalHost [data-receipt]").forEach(a=>a.onclick=async(e)=>{e.preventDefault(); try{ window.open(await CloudService.receiptUrl(a.dataset.receipt),"_blank"); }catch(err){ toast(err.message,"warn"); }});
+  $("#ptSave").onclick=async()=>{
+    const title=$("#ptTitle").value.trim();
+    if(!title){ toast("A title is required","warn"); return; }
+    const btn=$("#ptSave"); btn.disabled=true;
+    try{
+      const files=[...($("#ptFiles").files||[])];
+      const uploaded=[];
+      for(const f of files){ uploaded.push(await CloudService.uploadTaskFile(f)); }
+      if(task){
+        await CloudService.api(`cloud_tasks?id=eq.${task.id}`,{method:"PATCH",prefer:"return=minimal",body:{
+          title:title, notes:$("#ptNotes").value.trim()||null, due_date:$("#ptDue").value||null,
+          priority:$("#ptPrio").value, status:$("#ptStatus").value,
+          attachments:atts.concat(uploaded), updated_at:new Date().toISOString()
+        }});
+        if(uploaded.length) PushService.notify(sel.id,"Task updated",title+(uploaded.length?" — "+uploaded.length+" image"+(uploaded.length===1?"":"s")+" attached":""),"./tasks/");
+        toast("Task updated","ok");
+      }else{
+        await CloudService.api("cloud_tasks",{method:"POST",prefer:"return=minimal",body:{
+          owner_id:CloudService.me().id, assignee_id:sel.id, title:title,
+          notes:$("#ptNotes").value.trim()||null, due_date:$("#ptDue").value||null,
+          priority:$("#ptPrio").value, attachments:uploaded
+        }});
+        PushService.notify(sel.id,"New task from "+(CloudService.me().email),title,"./tasks/");
+        toast("Task sent to "+name,"ok");
+      }
+      $("#modalHost").innerHTML=""; fillPeople();
+    }catch(err){ toast(err.message,"warn"); btn.disabled=false; }
+  };
+}
+
 function openAddPerson(){
   $("#modalHost").innerHTML=`<div class="overlay" id="ovAddP"><div class="modal" style="max-width:460px">
     <h2><span class="eyebrow">Add person</span></h2>
@@ -1918,7 +1976,7 @@ async function fillPeople(){
     const [people,ledger,cloudTasks]=await Promise.all([
       CloudService.people(),
       CloudService.ledger(),
-      CloudService.api(`cloud_tasks?owner_id=eq.${me}&select=id,title,status,due_date,assignee_id,comments,created_at&order=created_at.desc`)
+      CloudService.api(`cloud_tasks?owner_id=eq.${me}&select=id,title,status,due_date,assignee_id,comments,created_at,notes,priority,attachments&order=created_at.desc`)
     ]);
     if(!$("#pplBody")) return;
     const othersAll=people.filter(p=>p.id!==me);
@@ -2028,11 +2086,11 @@ async function fillPeople(){
           <span class="mono" style="font-size:11.5px;color:${r.type==="spend"?"var(--danger)":"var(--muted)"};white-space:nowrap">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</span></div>`).join("")}`:""}
       </div>
       <div class="card">
-        <h2><span class="eyebrow">Tasks with ${esc(sel.display_name||sel.email)}</span></h2>
+        <h2 style="display:flex;justify-content:space-between;align-items:center"><span class="eyebrow">Tasks with ${esc(sel.display_name||sel.email)}</span><button class="btn sm primary" id="pplAddTask">+ Add task</button></h2>
         ${openCloud.length?`<div class="grouphead" style="margin-top:2px"><span class="eyebrow">Sent via cloud (${openCloud.length})</span></div>
-          ${openCloud.map(t=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)">
+          ${openCloud.map(t=>`<div data-ctask="${esc(t.id)}" style="padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer" title="Click to edit">
             <div style="font-size:13.5px;font-weight:600">${esc(t.title)}</div>
-            <div class="mono" style="font-size:10.5px;color:${t.status==="done"?"var(--ok)":"var(--accent)"}">☁ ${esc(t.status.replace("_"," ").toUpperCase())}${t.due_date?` · due ${esc(fmtDate(t.due_date))}`:""}${(t.comments||[]).length?` · ${(t.comments||[]).length} comment${(t.comments||[]).length===1?"":"s"}`:""}</div>
+            <div class="mono" style="font-size:10.5px;color:${t.status==="done"?"var(--ok)":"var(--accent)"}">☁ ${esc(t.status.replace("_"," ").toUpperCase())}${t.due_date?` · due ${esc(fmtDate(t.due_date))}`:""}${(t.comments||[]).length?` · ${(t.comments||[]).length} comment${(t.comments||[]).length===1?"":"s"}`:""}${(t.attachments||[]).length?` · 📎 ${(t.attachments||[]).length}`:""}</div>
             ${(t.comments||[]).slice(-1).map(c=>`<div style="font-size:12px;color:var(--muted);margin-top:3px">"${esc(c.text)}"</div>`).join("")}
           </div>`).join("")}`:""}
         ${localWaiting.length?`<div class="grouphead"><span class="eyebrow">Waiting for (${localWaiting.length})</span></div>
@@ -2050,6 +2108,8 @@ async function fillPeople(){
     $$("#pplBody [data-task]").forEach(el=>el.onclick=()=>UI.taskDrawer(el.dataset.task));
     $$("#pplBody [data-receipt]").forEach(a=>a.onclick=async(e)=>{e.preventDefault(); try{ window.open(await CloudService.receiptUrl(a.dataset.receipt),"_blank"); }catch(err){ toast(err.message,"warn"); }});
     const pf=$("#pplFloat"); if(pf) pf.onclick=openLedgerModal;
+    const at=$("#pplAddTask"); if(at) at.onclick=()=>openPersonTaskModal(sel,null);
+    $$("#pplBody [data-ctask]").forEach(el=>el.onclick=()=>{ const t=theirCloud.find(x=>x.id===el.dataset.ctask); if(t) openPersonTaskModal(sel,t); });
     const pl=$("#pplLedger"); if(pl) pl.onclick=openLedgerModal;
     const rs=$("#pplReset"); if(rs) rs.onclick=()=>openResetPassword(sel);
     const ar=$("#pplArch"); if(ar) ar.onclick=async()=>{
