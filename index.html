@@ -273,7 +273,7 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
 .navsec .chev{transition:transform .15s;font-size:9px}
 .navsec.folded .chev{transform:rotate(-90deg)}
 .navbtn.navfolded{display:none}
-.navfoldall{margin-top:auto;padding:8px 0 4px;display:flex;gap:10px}
+.navfoldall{display:flex;gap:10px}
 .navfoldall button{appearance:none;border:0;background:none;color:var(--faint);cursor:pointer;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase}
 .navfoldall button:hover{color:var(--accent)}
 </style>
@@ -315,6 +315,7 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
   </header>
 
   <nav class="rail" aria-label="Main navigation">
+    <div class="navfoldall" style="margin:0 0 4px;padding:2px 0"><button id="navFoldAll">Fold all</button><button id="navUnfoldAll">Unfold all</button></div>
     <button class="btn primary" id="captureBtn" style="margin:2px 6px 10px;justify-content:center">+ Capture <span class="kbd" style="border-color:rgba(0,0,0,.25);color:inherit">C</span></button>
     <div class="navsec eyebrow">Engage</div>
     <button class="navbtn" title="Start here: your best next actions, chosen for you" data-view="focus"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>Focus</button>
@@ -330,7 +331,8 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
     <button class="navbtn" title="Per-person view: their tasks and the money position" data-view="people"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5 5 0 0 1 6 4.5"/></svg>People</button>
     <button class="navbtn" title="Business development — clients, stages and their pipelines" data-view="clients"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/></svg>Clients</button>
     <div class="navsec eyebrow">Money</div>
-    <button class="navbtn" title="Expected revenue and payments to make — your 30/60 day money picture" data-view="finance"><svg viewBox="0 0 24 24"><path d="M12 2v20M17 6.5C17 4.6 14.8 3 12 3S7 4.6 7 6.5 9.2 10 12 10s5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5"/></svg>Finance</button>
+    <button class="navbtn" title="Live summary of the family, business and farm money spaces" data-view="money"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/></svg>Money</button>
+    <button class="navbtn" title="Speculative CRM revenue — proposals you are driving towards, and payments to make" data-view="finance"><svg viewBox="0 0 24 24"><path d="M12 2v20M17 6.5C17 4.6 14.8 3 12 3S7 4.6 7 6.5 9.2 10 12 10s5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5"/></svg>Pipeline</button>
     <a class="navbtn" href="https://money.forgiatus.com/" target="_blank" rel="noopener" title="Julius Family Money — bills, planner, debts and spaces" style="text-decoration:none"><svg viewBox="0 0 24 24"><path d="M3 10l9-7 9 7v10a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>Family Money ↗</a>
     <div class="navsec eyebrow">Horizons</div>
     <button class="navbtn" title="Goals with linked projects, and daily habit streaks" data-view="goals"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>Goals</button>
@@ -342,7 +344,6 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
     <button class="navbtn" title="Daily scan and the 10-step weekly review" data-view="review"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>Review<span class="cnt" id="cntReview"></span></button>
     <div class="navsec eyebrow">System</div>
     <button class="navbtn" title="File connection, backups, cloud account and preferences" data-view="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>Data &amp; settings</button>
-    <div class="navfoldall"><button id="navFoldAll">Fold all</button><button id="navUnfoldAll">Unfold all</button></div>
     <div class="railfoot"><span class="eyebrow"><span class="kbd">Ctrl+K</span> commands</span></div>
   </nav>
 
@@ -2454,6 +2455,62 @@ function financeAnalysis(){
   f.outgoings.forEach(x=>{(x.paidHistory||[]).forEach(p=>{ if((p.paidOn||"")>=cutoff){ const k=(x.category||"Uncategorised")+"|"+(p.currency||x.currency); cats[k]=(cats[k]||0)+parseFloat(p.amount||0); }});});
   return {byMonth,months,cats};
 }
+/* Live money summary pulled from the Family Money app (same Supabase, RLS-scoped) */
+function computeSpaceSummary(d, tStr){
+  const money=(c,v)=>(c==="GBP"?"£":c==="USD"?"$":c==="EUR"?"€":c==="ZAR"?"R":c+" ")+Math.abs(v).toLocaleString("en-GB",{maximumFractionDigits:0});
+  const sum=(rows,f)=>{ const o={}; (rows||[]).forEach(r=>{ o[r.currency]=(o[r.currency]||0)+Number(f?f(r):r.amount); }); return o; };
+  const soon=(d.bills||[]).filter(b=>b.due_date>=tStr), overdue=(d.bills||[]).filter(b=>b.due_date<tStr);
+  const inc=sum(d.income), out=sum((d.payments||[]).concat(d.expenses||[]));
+  const net={}; const ks={}; Object.keys(inc).forEach(c=>ks[c]=1); Object.keys(out).forEach(c=>ks[c]=1);
+  Object.keys(ks).forEach(c=>net[c]=(inc[c]||0)-(out[c]||0));
+  const debts=sum(d.debts, r=>r.balance);
+  const fmtSums=o=>Object.keys(o).filter(c=>o[c]).map(c=>(o[c]<0?"−":"")+money(c,o[c])).join(" · ")||"—";
+  return {
+    dueCount: soon.length, overdueCount: overdue.length,
+    dueSum: fmtSums(sum(soon)), overdueSum: fmtSums(sum(overdue)),
+    netStr: fmtSums(net), netGood: Object.keys(net).length ? Object.keys(net).every(c=>net[c]>=0) : null,
+    debtStr: fmtSums(debts), hasDebt: Object.keys(debts).some(c=>debts[c]>0)
+  };
+}
+UI.money = function(){
+  if(financeLocked()) return financeLockHTML();
+  const spaces=[["family","Family","var(--accent)"],["business","Business","var(--ok)"],["farm","TRJ Farms","#d98a3d"],["private","Private","#8a63b8"]];
+  return `
+  <div class="viewhead"><div><h1>Money</h1><div class="sub">The real position — live from Julius Family Money, per space</div></div>
+    <div class="viewactions"><a class="btn primary" href="https://money.forgiatus.com/" target="_blank" rel="noopener" style="text-decoration:none">Open Family Money ↗</a></div></div>
+  <div class="grid c2">
+    ${spaces.map(([sp,label,col])=>`
+    <div class="card" style="border-left:3px solid ${col}">
+      <h2><span class="eyebrow">${label}</span></h2>
+      <div id="ms-${sp}" class="mono" style="font-size:12px;color:var(--faint)">loading…</div>
+    </div>`).join("")}
+  </div>
+  <p class="sub" style="margin-top:10px">Figures are this month's in/out plus what's due in the next 7 days. Private is your own space only; PINs in the money app do not gate this summary — lock this view with the Finance PIN if needed.</p>`;
+};
+async function fillMoneySummary(){
+  if(!CloudService.session) return;
+  const tStr=todayStr(), ym=tStr.slice(0,7), from=ym+"-01", soon=addDays(tStr,7);
+  for(const sp of ["family","business","farm","private"]){
+    const el=document.getElementById("ms-"+sp); if(!el) continue;
+    try{
+      const scope = sp==="private" ? `space=eq.private&space_owner=eq.${CloudService.me().id}` : `space=eq.${sp}`;
+      const [bills,income,payments,expenses,debts]=await Promise.all([
+        CloudService.api(`fam_bills?select=amount,currency,due_date&archived=eq.false&due_date=lte.${soon}&${scope}`),
+        CloudService.api(`fam_income?select=amount,currency&week_date=gte.${from}&${scope}`),
+        CloudService.api(`fam_bill_payments?select=amount,currency&paid_at=gte.${from}&${scope}`),
+        CloudService.api(`fam_expenses?select=amount,currency&spent_at=gte.${from}&${scope}`),
+        CloudService.api(`fam_debts?select=balance,currency&archived=eq.false&${scope}`)
+      ]);
+      const m=computeSpaceSummary({bills,income,payments,expenses,debts}, tStr);
+      el.innerHTML =
+        `<div>This month net: <b style="color:${m.netGood===false?"var(--danger)":m.netGood?"var(--ok)":"var(--faint)"}">${m.netStr}</b></div>`+
+        `<div style="margin-top:3px">Due next 7 days: ${m.dueCount?`<b>${m.dueCount}</b> · ${m.dueSum}`:"nothing"}${m.overdueCount?` · <span style="color:var(--danger)">${m.overdueCount} overdue (${m.overdueSum})</span>`:""}</div>`+
+        `<div style="margin-top:3px">Owing: ${m.hasDebt?`<span style="color:var(--danger)">${m.debtStr}</span>`:"debt free ✔"}</div>`;
+    }catch(e){
+      el.textContent = sp==="farm"||sp==="business" ? "no access / not set up" : "unavailable — check Family Money migrations";
+    }
+  }
+}
 UI.finance = function(){
   if(financeLocked()) return financeLockHTML();
   const f=FinanceService.data();
@@ -2466,7 +2523,7 @@ UI.finance = function(){
   const paidOuts=f.outgoings.filter(x=>x.paid);
   const recBadge=r=>r&&r!=="none"?`<span class="badge">${esc(r)}</span>`:"";
   return `
-  <div class="viewhead"><div><h1>Finance</h1><div class="sub">Revenue you're driving towards, and what's committed to go out</div></div>
+  <div class="viewhead"><div><h1>Pipeline</h1><div class="sub">Speculative, CRM-driven: proposals you're driving towards, and payments to make. For the real position, see Money.</div></div>
     <div class="viewactions"><button class="btn ghost" id="finPin" title="Protect this view with a 4-digit PIN">${AppState.data.settings.financePin?"🔒 PIN":"Set PIN"}</button><button class="btn" id="finAddOut">+ Payment to make</button><button class="btn primary" id="finAddInc">+ Expected revenue</button></div></div>
   <div class="grid c4" style="margin-bottom:16px">
     <div class="card"><div class="eyebrow">Confirmed in — 30 days</div>${sumsHTML(in30,"nothing confirmed")}${FXService.approxHTML(in30)}</div>
@@ -3134,6 +3191,7 @@ function bindView(){
   $$("#view [data-editgoal]").forEach(b=>b.onclick=()=>openGoalEditor(b.dataset.editgoal));
   $$("#view [data-delgoal]").forEach(b=>b.onclick=()=>{ if(confirm("Delete this goal?")){ GoalService.remove(b.dataset.delgoal); render(); } });
   fillGoalMetrics();
+  if(AppState.currentView==="money") fillMoneySummary();
   $$("#view [data-habit]").forEach(cb=>cb.onchange=()=>{ HabitService.toggle(cb.dataset.habit,todayStr()); render(); });
   $$("#view [data-delhabit]").forEach(b=>b.onclick=()=>{ if(confirm("Delete this habit and its history?")){ HabitService.remove(b.dataset.delhabit); render(); } });
   const sb=$("#smartBtn"); if(sb) sb.onclick=()=>openSmartCapture();
@@ -3358,7 +3416,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $$("nav .navbtn,[id=mobilenav] .navbtn").forEach(b=>{ if(b.dataset.view) b.addEventListener("click",()=>go(b.dataset.view)); });
   const mm=$("#mobMore");
   if(mm) mm.addEventListener("click",()=>{
-    const views=[["clarify","Clarify"],["waiting","Waiting for"],["people","People"],["clients","Clients"],["goals","Goals & habits"],["finance","Finance"],["notes","Notes"],["calendar","Calendar"],["someday","Someday / Maybe"],["reference","Reference"],["review","Review"],["settings","Data & settings"]];
+    const views=[["clarify","Clarify"],["waiting","Waiting for"],["people","People"],["clients","Clients"],["goals","Goals & habits"],["money","Money"],["finance","Pipeline"],["notes","Notes"],["calendar","Calendar"],["someday","Someday / Maybe"],["reference","Reference"],["review","Review"],["settings","Data & settings"]];
     $("#modalHost").innerHTML=`<div class="overlay" id="ovMore"><div class="modal" style="max-width:420px">
       <h2><span class="eyebrow">All views</span></h2>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">

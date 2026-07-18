@@ -230,6 +230,33 @@ function extractObj(src, name){
     assert(!d.querySelector('[data-view="finance"]').classList.contains('navfolded'), 'navigating to a view auto-unfolds its section');
   }
 
+
+  console.log('--- Money summary view ---');
+  {
+    const fn = extractFn(gtdSrc, 'computeSpaceSummary');
+    const cs = new Function(fn + '\nreturn computeSpaceSummary;')();
+    const m = cs({
+      bills:[{amount:100,currency:'GBP',due_date:'2026-07-20'},{amount:50,currency:'GBP',due_date:'2026-07-01'}],
+      income:[{amount:2000,currency:'GBP'}],
+      payments:[{amount:500,currency:'GBP'}],
+      expenses:[{amount:300,currency:'GBP'}],
+      debts:[{balance:4000,currency:'GBP'}]
+    }, '2026-07-18');
+    assert(m.dueCount===1 && m.overdueCount===1, 'due vs overdue split on today');
+    assert(m.netStr.includes('1,200') && m.netGood===true, 'month net = 2000-800 positive');
+    assert(m.debtStr.includes('4,000') && m.hasDebt, 'owing total shown');
+    const clean = cs({bills:[],income:[],payments:[],expenses:[],debts:[{balance:0,currency:'GBP'}]}, '2026-07-18');
+    assert(clean.hasDebt===false, 'zero balances = debt free');
+
+    const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    assert(gtd.includes('data-view="money"'), 'Money nav button present');
+    assert(gtd.includes('>Pipeline</button>'), 'Finance renamed Pipeline in nav');
+    assert(gtd.includes('<h1>Pipeline</h1>'), 'view retitled Pipeline');
+    assert(gtd.includes('AppState.currentView==="money"'), 'money summary fill hooked to render');
+    // fold controls now precede the first section
+    assert(gtd.indexOf('id="navFoldAll"') < gtd.indexOf('>Engage</div>'), 'fold controls at the top of the rail');
+  }
+
   console.log('--- Static: wiring present in built files ---');
   {
     const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
