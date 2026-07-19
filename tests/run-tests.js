@@ -281,26 +281,27 @@ function extractObj(src, name){
     const fnSrc = fs.readFileSync(path.join(ROOT,'supabase/functions/notify-whatsapp/index.ts'),'utf8');
     assert(fnSrc.includes('api.callmebot.com') && fnSrc.includes('encodeURIComponent'), 'edge function calls CallMeBot with encoded params');
     assert(gtd.includes('functions/v1/notify-whatsapp'), 'app calls the edge function');
-    assert(gtd.includes('waContacts'), 'per-person WhatsApp config stored in synced state');
-    assert(gtd.includes('openWaModal') && gtd.includes('id="pplWa"'), 'People view has the WhatsApp config button and modal');
-    assert(gtd.includes('WhatsAppService.send(sel.id,"New task from "'), 'task creation fires a WhatsApp message');
-    assert(gtd.includes('WhatsAppService.send(assigneeId,"New task from "'), 'clarify delegation fires a WhatsApp message');
-    assert(gtd.includes('id="waTest"'), 'send-test button present');
+    assert(gtd.includes('fam_notify_prefs'), 'config read from the admin-managed prefs table');
+    assert(gtd.includes('id="pplWa"') && gtd.includes('managed in Julius Family Money'), 'People view points at the admin portal');
+    assert(gtd.includes('"task_assigned");'), 'task creation fires with the task_assigned event');
+    assert(gtd.includes('WhatsAppService.send(assigneeId,') && gtd.includes('"Task updated by "'), 'delegation and update paths fire with events');
 
-    // functional: cfg/set round-trip
+
+    // functional: allowed() gating
     const src = gtdSrc;
     const i0 = src.indexOf('const WhatsAppService={');
     const i1 = src.indexOf('};', src.indexOf('return r.ok;')) + 2;
-    const AppState = {data:{}};
-    let dirty = 0;
-    const WhatsAppService = new Function('AppState','markDirty','CloudService','CLOUD',
-      src.slice(i0, i1).replace('const WhatsAppService=','return ') )(AppState, ()=>dirty++, {session:null}, {url:'',key:''});
-    WhatsAppService.set('p1','+447700900123','9911');
-    assert(WhatsAppService.cfg('p1').phone === '+447700900123' && dirty === 1, 'set stores config and marks dirty');
-    const sent = await WhatsAppService.send('p1','hello');
+    const WhatsAppService = new Function('CloudService','CLOUD',
+      src.slice(i0, i1).replace('const WhatsAppService=','return ') )({session:null, api:async()=>[]}, {url:'',key:''});
+    const base = {wa_enabled:true, wa_phone:'+44770', wa_key:'99', events:{task_assigned:true, task_updated:false}};
+    assert(WhatsAppService.allowed(base,'task_assigned') === true, 'assigned event allowed when on');
+    assert(WhatsAppService.allowed(base,'task_updated') === false, 'updated event blocked when toggled off');
+    assert(WhatsAppService.allowed(Object.assign({},base,{wa_enabled:false}),'task_assigned') === false, 'master switch off blocks everything');
+    assert(WhatsAppService.allowed(Object.assign({},base,{wa_key:null}),'task_assigned') === false, 'missing key blocks sending');
+    assert(WhatsAppService.allowed(Object.assign({},base,{events:null}),'task_assigned') === true, 'assigned defaults on when events unset');
+    assert(WhatsAppService.allowed(null,'task_assigned') === false, 'no prefs row means no message');
+    const sent = await WhatsAppService.send('p1','hello','task_assigned');
     assert(sent === false, 'send is a safe no-op without a session');
-    WhatsAppService.set('p1','','');
-    assert(WhatsAppService.cfg('p1') === null, 'clearing removes the config');
   }
 
   console.log('--- Mobile accordion behaviour hooks ---');

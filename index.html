@@ -1472,7 +1472,7 @@ const CloudService = {
       notes:note||task.description||null, due_date:due||task.dueDate||null,
       priority:task.priority||"normal", local_ref:task.id
     }});
-    if(typeof WhatsAppService!=="undefined") WhatsAppService.send(assigneeId,"New task from "+this.me().email+": "+task.title+(due||task.dueDate?" (due "+(due||task.dueDate)+")":""));
+    if(typeof WhatsAppService!=="undefined") WhatsAppService.send(assigneeId,"New task from "+this.me().email+": "+task.title+(due||task.dueDate?" (due "+(due||task.dueDate)+")":""),"task_assigned");
     return rows[0];
   },
   async pull(){
@@ -1922,6 +1922,7 @@ function openPersonTaskModal(sel, task){
           attachments:atts.concat(uploaded), updated_at:new Date().toISOString()
         }});
         if(uploaded.length) PushService.notify(sel.id,"Task updated",title+(uploaded.length?" — "+uploaded.length+" image"+(uploaded.length===1?"":"s")+" attached":""),"./tasks/");
+        WhatsAppService.send(sel.id,"Task updated by "+(CloudService.me().email)+": "+title,"task_updated");
         toast("Task updated","ok");
       }else{
         await CloudService.api("cloud_tasks",{method:"POST",prefer:"return=minimal",body:{
@@ -1930,7 +1931,7 @@ function openPersonTaskModal(sel, task){
           priority:$("#ptPrio").value, attachments:uploaded
         }});
         PushService.notify(sel.id,"New task from "+(CloudService.me().email),title,"./tasks/");
-        WhatsAppService.send(sel.id,"New task from "+(CloudService.me().email)+": "+title+($("#ptDue").value?" (due "+$("#ptDue").value+")":""));
+        WhatsAppService.send(sel.id,"New task from "+(CloudService.me().email)+": "+title+($("#ptDue").value?" (due "+$("#ptDue").value+")":""),"task_assigned");
         toast("Task sent to "+name,"ok");
       }
       $("#modalHost").innerHTML=""; fillPeople();
@@ -1999,58 +2000,37 @@ function personMatchesTask(p,t){
   const email=(p.email||"").toLowerCase(), name=(p.display_name||"").toLowerCase();
   return w===email||(name&&w===name)||w.includes(email)||(name&&w.includes(name))||email.includes(w);
 }
-/* WhatsApp alerts via the notify-whatsapp Edge Function (CallMeBot per-recipient opt-in).
-   Config lives in Rodney's synced state: AppState.data.waContacts[profileId] = {phone, key}. */
+/* WhatsApp alerts via the notify-whatsapp Edge Function.
+   Config is admin-managed in Julius Family Money -> Admin -> WhatsApp notifications
+   (fam_notify_prefs table): per-user number/key, master switch, per-event toggles. */
 const WhatsAppService={
-  cfg(id){ return ((AppState.data&&AppState.data.waContacts)||{})[id]||null; },
-  set(id,phone,key){
-    AppState.data.waContacts=AppState.data.waContacts||{};
-    if(phone&&key) AppState.data.waContacts[id]={phone,key};
-    else delete AppState.data.waContacts[id];
-    markDirty();
+  _prefs:null,
+  async prefs(force){
+    if(this._prefs&&!force) return this._prefs;
+    try{ this._prefs=await CloudService.api("fam_notify_prefs?select=*")||[]; }
+    catch(e){ this._prefs=[]; }
+    return this._prefs;
   },
-  async send(assigneeId,text){
-    const c=this.cfg(assigneeId);
-    if(!c||!c.phone||!c.key||!CloudService.session) return false;
+  allowed(pref,event){
+    if(!pref||!pref.wa_enabled||!pref.wa_phone||!pref.wa_key) return false;
+    const ev=pref.events||{};
+    if(event==="task_assigned") return ev.task_assigned!==false;
+    return ev[event]===true;
+  },
+  async send(assigneeId,text,event){
+    if(!CloudService.session) return false;
+    const pref=(await this.prefs()).find(p=>p.user_id===assigneeId);
+    if(!this.allowed(pref,event||"task_assigned")) return false;
     try{
       const r=await fetch(`${CLOUD.url}/functions/v1/notify-whatsapp`,{
         method:"POST",
         headers:{Authorization:"Bearer "+CloudService.session.access_token,apikey:CLOUD.key,"Content-Type":"application/json"},
-        body:JSON.stringify({phone:c.phone,apikey:c.key,text})
+        body:JSON.stringify({phone:pref.wa_phone,apikey:pref.wa_key,text})
       });
       return r.ok;
     }catch(e){ console.warn("WhatsApp notify failed",e); return false; }
   }
 };
-function openWaModal(sel){
-  const c=WhatsAppService.cfg(sel.id)||{};
-  $("#modalHost").innerHTML=`<div class="overlay" data-close="1"><div class="modal" style="max-width:420px">
-    <h2><span class="eyebrow">WhatsApp alerts — ${esc(sel.display_name||sel.email)}</span></h2>
-    <p class="sub" style="margin-top:6px">One-off setup by the recipient: save <b>+34 644 44 21 48</b> in their phone, WhatsApp it the message <i>"I allow callmebot to send me messages"</i>, and it replies with their personal API key. Enter both below — new tasks then ping their WhatsApp.</p>
-    <div class="field"><label>Their WhatsApp number (with country code)</label><input id="waPhone" placeholder="+447700900123" value="${esc(c.phone||"")}"></div>
-    <div class="field"><label>Their CallMeBot API key</label><input id="waKey" placeholder="123456" value="${esc(c.key||"")}"></div>
-    <div class="modalfoot">
-      <button class="btn" id="waTest">Send test</button>
-      <button class="btn" data-close="1">Cancel</button>
-      <button class="btn primary" id="waSave">Save</button>
-    </div>
-  </div></div>`;
-  $("#waSave").onclick=()=>{
-    WhatsAppService.set(sel.id,$("#waPhone").value.trim(),$("#waKey").value.trim());
-    $("#modalHost").innerHTML=""; toast("WhatsApp alerts saved","ok"); fillPeople();
-  };
-  $("#waTest").onclick=async()=>{
-    const phone=$("#waPhone").value.trim(), key=$("#waKey").value.trim();
-    if(!phone||!key){ toast("Enter the number and key first","warn"); return; }
-    const btn=$("#waTest"); btn.disabled=true;
-    const prev=WhatsAppService.cfg(sel.id);
-    WhatsAppService.set(sel.id,phone,key);
-    const ok=await WhatsAppService.send(sel.id,"Test from the GTD console — WhatsApp alerts are working.");
-    if(prev) WhatsAppService.set(sel.id,prev.phone,prev.key); else WhatsAppService.set(sel.id,"","");
-    btn.disabled=false;
-    toast(ok?"Test sent — check their WhatsApp":"Test failed — check number, key, and that the notify-whatsapp function is deployed", ok?"ok":"warn");
-  };
-}
 async function fillPeople(){
   const body=$("#pplBody"); if(!body) return;
   try{
@@ -2168,7 +2148,7 @@ async function fillPeople(){
           <span class="mono" style="font-size:11.5px;color:${r.type==="spend"?"var(--danger)":"var(--muted)"};white-space:nowrap">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</span></div>`).join("")}`:""}
       </div>
       <div class="card">
-        <h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="eyebrow">Tasks with ${esc(sel.display_name||sel.email)}</span><span style="display:flex;gap:6px"><button class="btn sm" id="pplWa" title="WhatsApp alerts for this person">${WhatsAppService.cfg(sel.id)?"✓ WhatsApp":"WhatsApp…"}</button><button class="btn sm primary" id="pplAddTask">+ Add task</button></span></h2>
+        <h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="eyebrow">Tasks with ${esc(sel.display_name||sel.email)}</span><span style="display:flex;gap:6px"><span class="btn sm" id="pplWa" style="cursor:default;opacity:.85" title="WhatsApp alerts are managed in Julius Family Money → Admin → WhatsApp notifications">WhatsApp: managed in Admin</span><button class="btn sm primary" id="pplAddTask">+ Add task</button></span></h2>
         ${openCloud.length?`<div class="grouphead" style="margin-top:2px"><span class="eyebrow">Sent via cloud (${openCloud.length})</span></div>
           ${openCloud.map(t=>`<div data-ctask="${esc(t.id)}" style="padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer" title="Click to edit">
             <div style="font-size:13.5px;font-weight:600">${esc(t.title)}</div>
