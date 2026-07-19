@@ -10,7 +10,8 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <script>
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+  window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js', {updateViaCache:'none'}).then(function(reg){ if(reg&&reg.update) reg.update(); }).catch(function(){});
+    (function(){ var r=false; navigator.serviceWorker.addEventListener('controllerchange', function(){ if(r) return; r=true; if(sessionStorage.getItem('sw-reloaded')==='1') return; sessionStorage.setItem('sw-reloaded','1'); location.reload(); }); })(); });
 }
 </script>
 <style>
