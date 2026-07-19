@@ -3416,14 +3416,30 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $$("nav .navbtn,[id=mobilenav] .navbtn").forEach(b=>{ if(b.dataset.view) b.addEventListener("click",()=>go(b.dataset.view)); });
   const mm=$("#mobMore");
   if(mm) mm.addEventListener("click",()=>{
-    const views=[["clarify","Clarify"],["waiting","Waiting for"],["people","People"],["clients","Clients"],["goals","Goals & habits"],["money","Money"],["finance","Pipeline"],["notes","Notes"],["calendar","Calendar"],["someday","Someday / Maybe"],["reference","Reference"],["review","Review"],["settings","Data & settings"]];
-    $("#modalHost").innerHTML=`<div class="overlay" id="ovMore"><div class="modal" style="max-width:420px">
+    // Same groups as the desktop rail, so mobile and desktop read the same way
+    const groups=[
+      ["Engage",[["focus","Focus"],["calendar","Calendar"]]],
+      ["Process",[["inbox","Inbox"],["clarify","Clarify"]]],
+      ["Do",[["next","Next actions"],["projects","Projects"],["waiting","Waiting for"]]],
+      ["People & work",[["people","People"],["clients","Clients"]]],
+      ["Money",[["money","Money"],["finance","Pipeline"]]],
+      ["Horizons",[["goals","Goals & habits"],["someday","Someday / Maybe"]]],
+      ["Library",[["notes","Notes"],["reference","Reference"]]],
+      ["Reflect",[["review","Review"]]],
+      ["System",[["settings","Data & settings"]]]
+    ];
+    $("#modalHost").innerHTML=`<div class="overlay" id="ovMore"><div class="modal" style="max-width:440px;max-height:85vh;overflow-y:auto">
       <h2><span class="eyebrow">All views</span></h2>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-        ${views.map(v=>`<button class="btn" data-mnav="${v[0]}" style="padding:13px 8px;text-align:centre">${v[1]}</button>`).join("")}
-        <button class="btn primary" data-mcapture style="padding:13px 8px">+ Quick capture</button>
-        <button class="btn" data-msmart style="padding:13px 8px">✨ Smart capture</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 4px">
+        <button class="btn primary" data-mcapture style="padding:12px 8px">+ Quick capture</button>
+        <button class="btn" data-msmart style="padding:12px 8px">✨ Smart capture</button>
       </div>
+      ${groups.map(([name,views])=>`
+        <div class="eyebrow" style="margin:12px 0 6px">${name}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          ${views.map(v=>`<button class="btn" data-mnav="${v[0]}" style="padding:12px 8px;text-align:centre">${v[1]}</button>`).join("")}
+          ${name==="Money"?`<a class="btn" href="https://money.forgiatus.com/" target="_blank" rel="noopener" style="padding:12px 8px;text-align:centre;text-decoration:none">Family Money ↗</a>`:""}
+        </div>`).join("")}
       <div class="modalfoot"><button class="btn" id="moreClose">Close</button></div>
     </div></div>`;
     $("#moreClose").onclick=closeModal;

@@ -257,6 +257,20 @@ function extractObj(src, name){
     assert(gtd.indexOf('id="navFoldAll"') < gtd.indexOf('>Engage</div>'), 'fold controls at the top of the rail');
   }
 
+
+  console.log('--- Mobile More sheet: grouped like the rail ---');
+  {
+    const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    const i = gtd.indexOf('const mm=$("#mobMore")');
+    const sheet = gtd.slice(i, i+3000);
+    ['Engage','Process','Do','People & work','Money','Horizons','Library','Reflect','System'].forEach(g=>{
+      assert(sheet.includes('"' + g + '"'), 'More sheet group present: ' + g);
+    });
+    assert(sheet.includes('["money","Money"]') && sheet.includes('["finance","Pipeline"]'), 'Money and Pipeline reachable on mobile');
+    assert(sheet.includes('money.forgiatus.com'), 'Family Money link in the mobile Money group');
+    assert(sheet.includes('data-mcapture') && sheet.includes('data-msmart'), 'capture shortcuts kept at the top');
+  }
+
   console.log('--- Static: wiring present in built files ---');
   {
     const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
