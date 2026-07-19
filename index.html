@@ -1148,25 +1148,56 @@ UI.clarify = function(){
 /* ---------------- NEXT ACTIONS ---------------- */
 UI.next = function(){
   const f=AppState.filters;
+  const range=AppState.nextRange||"all";
   let tasks=TaskService.byStatus("next");
+  const tStr=todayStr();
+  const dateOfTask=t=>t.dueDate||t.scheduledDate||null;
+  if(range!=="all"){
+    let from=tStr, to=tStr;
+    if(range==="week"){
+      const d=new Date(); d.setDate(d.getDate()-((d.getDay()+6)%7));
+      from=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+      to=addDays(from,6);
+    } else if(range==="month"){
+      const d=new Date();
+      from=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";
+      to=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(new Date(d.getFullYear(),d.getMonth()+1,0).getDate()).padStart(2,"0");
+    }
+    tasks=tasks.filter(t=>{ const ds=dateOfTask(t); return ds&&ds<=to&&(ds>=from||ds<tStr); }); // include overdue
+  }
   const groups={};
-  const keyFn = {
+  const rangeKey=t=>{
+    const ds=dateOfTask(t);
+    if(!ds) return "No date";
+    if(ds<tStr) return "Overdue";
+    if(range==="day") return "Today";
+    return new Date(ds+"T12:00:00").toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"});
+  };
+  const keyFn = range!=="all" ? rangeKey : ({
     context: t=>t.context||"No context",
     project: t=>t.projectId?projName(t.projectId):"Standalone",
     area:    t=>t.areaId?areaName(t.areaId):"No area",
     priority:t=>t.priority[0].toUpperCase()+t.priority.slice(1),
     energy:  t=>(t.energy||"medium")+" energy",
     due:     t=>t.dueDate?fmtDate(t.dueDate):"No due date"
-  }[f.group]|| (t=>t.context||"No context");
+  }[f.group]|| (t=>t.context||"No context"));
   tasks.forEach(t=>{ const k=keyFn(t); (groups[k]=groups[k]||[]).push(t); });
-  const keys=Object.keys(groups).sort();
+  const keys=range!=="all"
+    ? Object.keys(groups).sort((a,b)=>{
+        const ord=k=>k==="Overdue"?"0":k==="Today"?"1":(groups[k][0]&&(dateOfTask(groups[k][0])||"9999"));
+        return String(ord(a)).localeCompare(String(ord(b)));
+      })
+    : Object.keys(groups).sort();
+  const rangeBtn=(r,label)=>`<button class="btn sm ${range===r?"primary":""}" data-nextrange="${r}">${label}</button>`;
   return `
-  <div class="viewhead"><div><h1>Next actions</h1><div class="sub">${tasks.length} actionable item${tasks.length===1?"":"s"}</div></div>
-    <div class="viewactions"><label class="eyebrow" style="align-self:center">Group by</label>
-      <select id="groupSel" style="width:auto">${["context","project","area","priority","energy","due"].map(g=>`<option value="${g}" ${f.group===g?"selected":""}>${g[0].toUpperCase()+g.slice(1)}</option>`).join("")}</select>
+  <div class="viewhead"><div><h1>Next actions</h1><div class="sub">${tasks.length} actionable item${tasks.length===1?"":"s"}${range!=="all"?" — "+(range==="day"?"today":"this "+range)+" (overdue included)":""}</div></div>
+    <div class="viewactions">
+      ${rangeBtn("all","All")}${rangeBtn("day","Day")}${rangeBtn("week","Week")}${rangeBtn("month","Month")}
+      ${range==="all"?`<label class="eyebrow" style="align-self:center">Group by</label>
+      <select id="groupSel" style="width:auto">${["context","project","area","priority","energy","due"].map(g=>`<option value="${g}" ${f.group===g?"selected":""}>${g[0].toUpperCase()+g.slice(1)}</option>`).join("")}</select>`:""}
       <button class="btn primary" id="newNextBtn">+ New action</button></div></div>
-  ${tasks.length? keys.map(k=>`<div class="grouphead"><span class="eyebrow">${esc(k)}</span><span class="mono" style="font-size:10px;color:var(--faint)">${groups[k].length}</span></div><div class="card" style="padding:6px 10px">${listHTML(groups[k])}</div>`).join("")
-   : `<div class="card"><div class="empty"><div class="big">No next actions</div>Clarify your Inbox or capture something new.</div></div>`}`;
+  ${tasks.length? keys.map(k=>`<div class="grouphead"><span class="eyebrow" ${k==="Overdue"?'style="color:var(--danger)"':""}>${esc(k)}</span><span class="mono" style="font-size:10px;color:var(--faint)">${groups[k].length}</span></div><div class="card" style="padding:6px 10px">${listHTML(groups[k])}</div>`).join("")
+   : `<div class="card"><div class="empty"><div class="big">${range==="all"?"No next actions":"Nothing dated for "+(range==="day"?"today":"this "+range)}</div>${range==="all"?"Clarify your Inbox or capture something new.":"Undated actions are under All."}</div></div>`}`;
 };
 
 /* ---------------- PROJECTS ---------------- */
@@ -1315,6 +1346,12 @@ UI.calendar = function(){
       cells+=`<div class="calcell ${ds===todayStr()?"today":""}" style="min-height:180px"><div class="d">${d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric"})}</div>${cellEvents(ds)}</div>`;
     }
     body=`<div class="calgrid" style="grid-template-columns:repeat(7,1fr)">${cells}</div>`;
+  } else if(mode==="day"){
+    const ds=cur.getFullYear()+"-"+String(cur.getMonth()+1).padStart(2,"0")+"-"+String(cur.getDate()).padStart(2,"0");
+    const evs=evByDate[ds]||[];
+    const dayName=cur.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+    body=`<div class="grouphead"><span class="eyebrow">${dayName}${ds===todayStr()?" — today":""}</span></div>
+      <div class="card" style="padding:6px 10px">${evs.length?listHTML(evs.map(e=>e.t)):`<div class="empty">Nothing scheduled or due on this day.</div>`}</div>`;
   } else { // agenda
     const t0=new Date();
     let rows="";
@@ -1333,6 +1370,7 @@ UI.calendar = function(){
       <button class="btn sm" id="calPrev" aria-label="Previous">‹</button>
       <span class="eyebrow" style="align-self:center;min-width:130px;text-align:center">${esc(monthName)}</span>
       <button class="btn sm" id="calNext" aria-label="Next">›</button>
+      <button class="btn sm ${mode==="day"?"primary":""}" data-calmode="day">Day</button>
       <button class="btn sm ${mode==="month"?"primary":""}" data-calmode="month">Month</button>
       <button class="btn sm ${mode==="week"?"primary":""}" data-calmode="week">Week</button>
       <button class="btn sm ${mode==="agenda"?"primary":""}" data-calmode="agenda">Agenda</button>
@@ -3442,6 +3480,7 @@ function bindView(){
   }
   if(v==="next"){
     const g=$("#groupSel"); if(g) g.onchange=()=>{AppState.filters.group=g.value; render();};
+    $$("#view [data-nextrange]").forEach(b=>b.onclick=()=>{AppState.nextRange=b.dataset.nextrange; render();});
     const nb=$("#newNextBtn"); if(nb) nb.onclick=()=>UI.captureModal({status:"next",clarified:true,context:AppState.data.settings.defaultContext});
   }
   if(v==="projects"){ const b=$("#newProjBtn"); if(b) b.onclick=()=>UI.projectModal(null); }
@@ -3475,7 +3514,7 @@ function bindView(){
   if(v==="reference"){ const nb=$("#newRefBtn"); if(nb) nb.onclick=()=>UI.captureModal({status:"reference",clarified:true}); }
   if(v==="calendar"){
     $$("#view [data-calmode]").forEach(b=>b.onclick=()=>{AppState.calMode=b.dataset.calmode; render();});
-    const step = AppState.calMode==="week"?7:AppState.calMode==="month"?0:0;
+    const step = AppState.calMode==="day"?1:AppState.calMode==="week"?7:AppState.calMode==="month"?0:0;
     $("#calPrev").onclick=()=>{ const c=AppState.calCursor; if(AppState.calMode==="month") c.setMonth(c.getMonth()-1); else c.setDate(c.getDate()-(step||30)); render(); };
     $("#calNext").onclick=()=>{ const c=AppState.calCursor; if(AppState.calMode==="month") c.setMonth(c.getMonth()+1); else c.setDate(c.getDate()+(step||30)); render(); };
   }
