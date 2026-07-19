@@ -216,7 +216,7 @@ const Push={
     try{await fetch(`${CLOUD.url}/functions/v1/notify`,{method:"POST",headers:{apikey:CLOUD.key,Authorization:"Bearer "+Cloud.session.access_token,"Content-Type":"application/json"},body:JSON.stringify({to_user_id:to,title,body:body||"",url:url||"./"})});}catch(e){}
   }
 };
-let ALL=[],TX=[],PROFILES=[],TAB="inbox",CALM=null,CALSEL=null,SHOWDONE=false;
+let ALL=[],TX=[],PROFILES=[],TAB="inbox",CALM=null,CALSEL=null,CALVIEW="month",SHOWDONE=false;
 
 const assignedToMe=()=>ALL.filter(t=>t.assignee_id===Cloud.me().id);
 const delegatedByMe=()=>ALL.filter(t=>t.owner_id===Cloud.me().id&&t.assignee_id!==Cloud.me().id);
@@ -419,32 +419,53 @@ function taskHTML(t,mine){
 
 /* ---------- CALENDAR ---------- */
 function calHTML(){
-  if(!CALM){const d=new Date();CALM={y:d.getFullYear(),m:d.getMonth()};}
+  if(!CALM){const d=new Date();CALM={y:d.getFullYear(),m:d.getMonth(),d:d.getDate()};}
+  if(CALM.d===undefined){CALM.d=1;}
   const {y,m}=CALM;
   const first=new Date(y,m,1);
-  const startDow=(first.getDay()+6)%7; // Monday first
-  const start=new Date(y,m,1-startDow);
   const monthName=first.toLocaleDateString("en-GB",{month:"long",year:"numeric"});
   const tasksByDate={};
   assignedToMe().forEach(t=>{if(t.due_date&&!["declined"].includes(t.status)){(tasksByDate[t.due_date]=tasksByDate[t.due_date]||[]).push(t);}});
   const tStr=todayStr();
-  let cells="";
-  for(let i=0;i<42;i++){
-    const d=new Date(start); d.setDate(start.getDate()+i);
-    const ds=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
-    const its=tasksByDate[ds]||[];
-    cells+=`<div class="calcell ${d.getMonth()!==m?"out":""} ${ds===tStr?"today":""} ${ds===CALSEL?"sel":""}" data-day="${ds}">
+  const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  const cellFor=(d,extra)=>{
+    const ds=iso(d); const its=tasksByDate[ds]||[];
+    return `<div class="calcell ${extra||""} ${ds===tStr?"today":""} ${ds===CALSEL?"sel":""}" data-day="${ds}">
       <div class="dn">${d.getDate()}</div>
       <div class="dots">${its.slice(0,6).map(t=>`<span class="dot ${t.owner_id===Cloud.me().id&&t.assignee_id===Cloud.me().id?"mine":""} ${isOver(t)?"od":""}"></span>`).join("")}</div>
     </div>`;
+  };
+  let grid="", headLabel=monthName;
+  if(CALVIEW==="day"){
+    const cur=new Date(y,m,CALM.d);
+    const ds=iso(cur);
+    headLabel=cur.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+    const its=(tasksByDate[ds]||[]);
+    grid=`<div class="grouphead" style="margin-top:6px"><span class="eyebrow">${ds===tStr?"Today":""}</span></div>
+      ${its.length?`<div style="margin-top:4px">${its.map(t=>taskHTML(t,t.owner_id===Cloud.me().id&&t.assignee_id===Cloud.me().id)).join("")}</div>`:`<div class="empty">Nothing due on this day.</div>`}`;
+  } else if(CALVIEW==="week"){
+    const cur=new Date(y,m,CALM.d);
+    const d0=new Date(cur); d0.setDate(cur.getDate()-((cur.getDay()+6)%7));
+    const d6=new Date(d0); d6.setDate(d0.getDate()+6);
+    headLabel=d0.toLocaleDateString("en-GB",{day:"numeric",month:"short"})+" – "+d6.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
+    let cells="";
+    for(let i=0;i<7;i++){ const d=new Date(d0); d.setDate(d0.getDate()+i); cells+=cellFor(d); }
+    grid=`<div class="calgrid">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>`<div class="caldow">${d}</div>`).join("")}${cells}</div>`;
+  } else { // month
+    const startDow=(first.getDay()+6)%7; // Monday first
+    const start=new Date(y,m,1-startDow);
+    let cells="";
+    for(let i=0;i<42;i++){ const d=new Date(start); d.setDate(start.getDate()+i); cells+=cellFor(d, d.getMonth()!==m?"out":""); }
+    grid=`<div class="calgrid">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>`<div class="caldow">${d}</div>`).join("")}${cells}</div>`;
   }
-  const sel=CALSEL&&tasksByDate[CALSEL]?tasksByDate[CALSEL]:null;
+  const sel=CALVIEW!=="day"&&CALSEL&&tasksByDate[CALSEL]?tasksByDate[CALSEL]:null;
   const upcoming=ALL.filter(t=>t.due_date&&!isClosed(t)).sort((a,b)=>a.due_date.localeCompare(b.due_date)).slice(0,12);
   return `
   <div class="card">
-    <div class="calhead"><button class="btn sm" id="calPrev">‹</button><b>${esc(monthName)}</b><button class="btn sm" id="calNext">›</button></div>
-    <div class="calgrid">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>`<div class="caldow">${d}</div>`).join("")}${cells}</div>
-    <div class="sub" style="margin-top:8px"><span class="dot" style="display:inline-block"></span> sent to you &nbsp; <span class="dot mine" style="display:inline-block"></span> your own &nbsp; <span class="dot od" style="display:inline-block"></span> overdue</div>
+    <div class="calhead"><button class="btn sm" id="calPrev">‹</button><b>${esc(headLabel)}</b><button class="btn sm" id="calNext">›</button></div>
+    <div style="display:flex;gap:6px;margin:6px 0">${[["day","Day"],["week","Week"],["month","Month"]].map(([r,l])=>`<button class="btn sm ${CALVIEW===r?"primary":""}" data-calview="${r}">${l}</button>`).join("")}</div>
+    ${grid}
+    ${CALVIEW!=="day"?`<div class="sub" style="margin-top:8px"><span class="dot" style="display:inline-block"></span> sent to you &nbsp; <span class="dot mine" style="display:inline-block"></span> your own &nbsp; <span class="dot od" style="display:inline-block"></span> overdue</div>`:""}
   </div>
   ${sel?`<div class="grouphead"><span class="eyebrow">${esc(fmtD(CALSEL))}</span></div><div class="card" style="margin-top:4px">${sel.map(t=>taskHTML(t,t.owner_id===Cloud.me().id&&t.assignee_id===Cloud.me().id)).join("")}</div>`:""}
   <div class="grouphead"><span class="eyebrow">Upcoming</span></div>
@@ -618,10 +639,16 @@ function bind(){
   $$("#content [data-reassign]").forEach(b=>b.onclick=()=>{const t=ALL.find(x=>x.id===b.dataset.reassign);if(t)openReassign(t);});
   const qa=$("#qAdd"); if(qa){qa.onclick=addMine; $("#qTitle").addEventListener("keydown",e=>{if(e.key==="Enter")addMine();});}
   const td=$("#toggleDone"); if(td)td.onclick=()=>{SHOWDONE=!SHOWDONE;renderApp();};
-  const cp=$("#calPrev"); if(cp)cp.onclick=()=>{CALM.m--;if(CALM.m<0){CALM.m=11;CALM.y--;}renderApp();};
-  const cn=$("#calNext"); if(cn)cn.onclick=()=>{CALM.m++;if(CALM.m>11){CALM.m=0;CALM.y++;}renderApp();};
+  const calStep=n=>{ const d=new Date(CALM.y,CALM.m,CALM.d||1);
+    if(CALVIEW==="day") d.setDate(d.getDate()+n);
+    else if(CALVIEW==="week") d.setDate(d.getDate()+7*n);
+    else d.setMonth(d.getMonth()+n);
+    CALM={y:d.getFullYear(),m:d.getMonth(),d:d.getDate()}; renderApp(); };
+  const cp=$("#calPrev"); if(cp)cp.onclick=()=>calStep(-1);
+  const cn=$("#calNext"); if(cn)cn.onclick=()=>calStep(1);
+  $$("#content [data-calview]").forEach(b=>b.onclick=()=>{ CALVIEW=b.dataset.calview; if(CALM.d===undefined){const d=new Date();CALM.d=(CALM.y===d.getFullYear()&&CALM.m===d.getMonth())?d.getDate():1;} renderApp(); });
   $$("#content .calcell").forEach(c=>c.onclick=()=>{CALSEL=CALSEL===c.dataset.day?null:c.dataset.day;renderApp();});
-  $$("#content [data-goday]").forEach(r=>r.onclick=()=>{const d=r.dataset.goday;CALM={y:+d.slice(0,4),m:+d.slice(5,7)-1};CALSEL=d;renderApp();});
+  $$("#content [data-goday]").forEach(r=>r.onclick=()=>{const d=r.dataset.goday;CALM={y:+d.slice(0,4),m:+d.slice(5,7)-1,d:+d.slice(8,10)};CALSEL=d;renderApp();});
   const pe=$("#pushEnable"); if(pe) pe.onclick=async()=>{ try{ await Push.subscribe(); toast("Notifications enabled"); renderApp(); }catch(e){ toast(e.message); } };
   $$("#content [data-gotab]").forEach(c=>c.onclick=()=>{TAB=c.dataset.gotab;renderApp();});
   $$("#content [data-goto]").forEach(r=>r.onclick=()=>{

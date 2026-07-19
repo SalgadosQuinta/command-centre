@@ -444,6 +444,16 @@ function extractObj(src, name){
     assert(gtd2.includes('pplInRange(t.due_date)'), 'people view cloud tasks filtered by range');
   }
 
+  console.log('--- Static: tasks app calendar Day/Week/Month ---');
+  {
+    const ta2 = fs.readFileSync(path.join(ROOT,'tasks','index.html'),'utf8');
+    assert(ta2.includes('CALVIEW="month"'), 'calendar view state defaults to month');
+    assert(ta2.includes('data-calview="day"')===false && ta2.includes('[["day","Day"],["week","Week"],["month","Month"]]'), 'mode buttons generated');
+    assert(ta2.includes('[data-calview]").forEach'), 'mode buttons wired');
+    assert(ta2.includes('CALVIEW==="day"') && ta2.includes('CALVIEW==="week"'), 'day and week render branches present');
+    assert(ta2.includes('if(CALVIEW==="day") d.setDate(d.getDate()+n)') && ta2.includes('d.setDate(d.getDate()+7*n)'), 'prev/next step by 1 day / 7 days / 1 month per mode');
+  }
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
