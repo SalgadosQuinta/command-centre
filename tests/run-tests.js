@@ -425,7 +425,7 @@ function extractObj(src, name){
   console.log('--- Static: Next actions ranges + Calendar day mode ---');
   {
     const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
-    assert(gtd.includes('data-nextrange="day"') && gtd.includes('data-nextrange="week"') && gtd.includes('data-nextrange="month"'), 'Day/Week/Month buttons in Next actions');
+    assert(gtd.includes('rangeBtn("day","Day")') && gtd.includes('rangeBtn("week","Week")') && gtd.includes('rangeBtn("month","Month")'), 'Day/Week/Month buttons in Next actions');
     assert(gtd.includes('data-nextrange]").forEach'), 'range buttons wired');
     assert(gtd.includes('data-calmode="day"'), 'Calendar has a Day mode button');
     assert(gtd.includes('AppState.calMode==="day"?1:'), 'calendar prev/next steps one day in day mode');
