@@ -276,6 +276,18 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
 .navfoldall{display:flex;gap:10px}
 .navfoldall button{appearance:none;border:0;background:none;color:var(--faint);cursor:pointer;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase}
 .navfoldall button:hover{color:var(--accent)}
+#mobMenu{display:none;position:fixed;left:0;right:0;z-index:60;background:var(--bg2);border-bottom:1px solid var(--line);box-shadow:0 12px 28px rgba(0,0,0,.45);max-height:72vh;overflow-y:auto;padding:6px 10px calc(12px + env(safe-area-inset-bottom,0px))}
+#mobMenu.open{display:block}
+#mobMenu .msec{width:100%;display:flex;justify-content:space-between;align-items:center;background:none;border:0;color:var(--faint);font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;padding:11px 4px 7px;cursor:pointer}
+#mobMenu .msec .chev{transition:transform .15s;font-size:9px}
+#mobMenu .msec.closed .chev{transform:rotate(-90deg)}
+#mobMenu .mviews{display:flex;flex-direction:column;gap:2px}
+#mobMenu .mviews.hidden{display:none}
+#mobMenu .mrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;border-radius:8px;color:var(--text);font-size:14px;padding:11px 8px;cursor:pointer;text-decoration:none}
+#mobMenu .mrow:active,#mobMenu .mrow.active{background:var(--panel2);color:var(--accent)}
+#mobMenu .mquick{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 0 2px}
+#mobScrim{display:none;position:fixed;inset:0;z-index:59;background:rgba(0,0,0,.4)}
+#mobScrim.open{display:block}
 </style>
 </head>
 <body>
@@ -358,6 +370,8 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
   </nav>
 </div>
 
+<div id="mobScrim"></div>
+<div id="mobMenu" role="menu" aria-label="All views"></div>
 <div id="toasts" aria-live="polite"></div>
 <div id="modalHost"></div>
 <input type="file" id="fileInput" accept=".json,application/json" class="hidden" aria-hidden="true">
@@ -1458,6 +1472,7 @@ const CloudService = {
       notes:note||task.description||null, due_date:due||task.dueDate||null,
       priority:task.priority||"normal", local_ref:task.id
     }});
+    if(typeof WhatsAppService!=="undefined") WhatsAppService.send(assigneeId,"New task from "+this.me().email+": "+task.title+(due||task.dueDate?" (due "+(due||task.dueDate)+")":""));
     return rows[0];
   },
   async pull(){
@@ -1915,6 +1930,7 @@ function openPersonTaskModal(sel, task){
           priority:$("#ptPrio").value, attachments:uploaded
         }});
         PushService.notify(sel.id,"New task from "+(CloudService.me().email),title,"./tasks/");
+        WhatsAppService.send(sel.id,"New task from "+(CloudService.me().email)+": "+title+($("#ptDue").value?" (due "+$("#ptDue").value+")":""));
         toast("Task sent to "+name,"ok");
       }
       $("#modalHost").innerHTML=""; fillPeople();
@@ -1982,6 +1998,58 @@ function personMatchesTask(p,t){
   const w=t.waitingFor.person.toLowerCase();
   const email=(p.email||"").toLowerCase(), name=(p.display_name||"").toLowerCase();
   return w===email||(name&&w===name)||w.includes(email)||(name&&w.includes(name))||email.includes(w);
+}
+/* WhatsApp alerts via the notify-whatsapp Edge Function (CallMeBot per-recipient opt-in).
+   Config lives in Rodney's synced state: AppState.data.waContacts[profileId] = {phone, key}. */
+const WhatsAppService={
+  cfg(id){ return ((AppState.data&&AppState.data.waContacts)||{})[id]||null; },
+  set(id,phone,key){
+    AppState.data.waContacts=AppState.data.waContacts||{};
+    if(phone&&key) AppState.data.waContacts[id]={phone,key};
+    else delete AppState.data.waContacts[id];
+    markDirty();
+  },
+  async send(assigneeId,text){
+    const c=this.cfg(assigneeId);
+    if(!c||!c.phone||!c.key||!CloudService.session) return false;
+    try{
+      const r=await fetch(`${CLOUD.url}/functions/v1/notify-whatsapp`,{
+        method:"POST",
+        headers:{Authorization:"Bearer "+CloudService.session.access_token,apikey:CLOUD.key,"Content-Type":"application/json"},
+        body:JSON.stringify({phone:c.phone,apikey:c.key,text})
+      });
+      return r.ok;
+    }catch(e){ console.warn("WhatsApp notify failed",e); return false; }
+  }
+};
+function openWaModal(sel){
+  const c=WhatsAppService.cfg(sel.id)||{};
+  $("#modalHost").innerHTML=`<div class="overlay" data-close="1"><div class="modal" style="max-width:420px">
+    <h2><span class="eyebrow">WhatsApp alerts — ${esc(sel.display_name||sel.email)}</span></h2>
+    <p class="sub" style="margin-top:6px">One-off setup by the recipient: save <b>+34 644 44 21 48</b> in their phone, WhatsApp it the message <i>"I allow callmebot to send me messages"</i>, and it replies with their personal API key. Enter both below — new tasks then ping their WhatsApp.</p>
+    <div class="field"><label>Their WhatsApp number (with country code)</label><input id="waPhone" placeholder="+447700900123" value="${esc(c.phone||"")}"></div>
+    <div class="field"><label>Their CallMeBot API key</label><input id="waKey" placeholder="123456" value="${esc(c.key||"")}"></div>
+    <div class="modalfoot">
+      <button class="btn" id="waTest">Send test</button>
+      <button class="btn" data-close="1">Cancel</button>
+      <button class="btn primary" id="waSave">Save</button>
+    </div>
+  </div></div>`;
+  $("#waSave").onclick=()=>{
+    WhatsAppService.set(sel.id,$("#waPhone").value.trim(),$("#waKey").value.trim());
+    $("#modalHost").innerHTML=""; toast("WhatsApp alerts saved","ok"); fillPeople();
+  };
+  $("#waTest").onclick=async()=>{
+    const phone=$("#waPhone").value.trim(), key=$("#waKey").value.trim();
+    if(!phone||!key){ toast("Enter the number and key first","warn"); return; }
+    const btn=$("#waTest"); btn.disabled=true;
+    const prev=WhatsAppService.cfg(sel.id);
+    WhatsAppService.set(sel.id,phone,key);
+    const ok=await WhatsAppService.send(sel.id,"Test from the GTD console — WhatsApp alerts are working.");
+    if(prev) WhatsAppService.set(sel.id,prev.phone,prev.key); else WhatsAppService.set(sel.id,"","");
+    btn.disabled=false;
+    toast(ok?"Test sent — check their WhatsApp":"Test failed — check number, key, and that the notify-whatsapp function is deployed", ok?"ok":"warn");
+  };
 }
 async function fillPeople(){
   const body=$("#pplBody"); if(!body) return;
@@ -2100,7 +2168,7 @@ async function fillPeople(){
           <span class="mono" style="font-size:11.5px;color:${r.type==="spend"?"var(--danger)":"var(--muted)"};white-space:nowrap">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</span></div>`).join("")}`:""}
       </div>
       <div class="card">
-        <h2 style="display:flex;justify-content:space-between;align-items:center"><span class="eyebrow">Tasks with ${esc(sel.display_name||sel.email)}</span><button class="btn sm primary" id="pplAddTask">+ Add task</button></h2>
+        <h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="eyebrow">Tasks with ${esc(sel.display_name||sel.email)}</span><span style="display:flex;gap:6px"><button class="btn sm" id="pplWa" title="WhatsApp alerts for this person">${WhatsAppService.cfg(sel.id)?"✓ WhatsApp":"WhatsApp…"}</button><button class="btn sm primary" id="pplAddTask">+ Add task</button></span></h2>
         ${openCloud.length?`<div class="grouphead" style="margin-top:2px"><span class="eyebrow">Sent via cloud (${openCloud.length})</span></div>
           ${openCloud.map(t=>`<div data-ctask="${esc(t.id)}" style="padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer" title="Click to edit">
             <div style="font-size:13.5px;font-weight:600">${esc(t.title)}</div>
@@ -3416,7 +3484,8 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $$("nav .navbtn,[id=mobilenav] .navbtn").forEach(b=>{ if(b.dataset.view) b.addEventListener("click",()=>go(b.dataset.view)); });
   const mm=$("#mobMore");
   if(mm) mm.addEventListener("click",()=>{
-    // Same groups as the desktop rail, so mobile and desktop read the same way
+    const menu=$("#mobMenu"), scrim=$("#mobScrim");
+    if(menu.classList.contains("open")){ menu.classList.remove("open"); scrim.classList.remove("open"); return; }
     const groups=[
       ["Engage",[["focus","Focus"],["calendar","Calendar"]]],
       ["Process",[["inbox","Inbox"],["clarify","Clarify"]]],
@@ -3428,24 +3497,37 @@ document.addEventListener("DOMContentLoaded", async ()=>{
       ["Reflect",[["review","Review"]]],
       ["System",[["settings","Data & settings"]]]
     ];
-    $("#modalHost").innerHTML=`<div class="overlay" id="ovMore"><div class="modal" style="max-width:440px;max-height:85vh;overflow-y:auto">
-      <h2><span class="eyebrow">All views</span></h2>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 4px">
+    const cur=AppState.currentView;
+    let openSec=localStorage.getItem("gtd_mobsec")||"";
+    const curGroup=groups.find(([,vs])=>vs.some(v=>v[0]===cur));
+    if(curGroup) openSec=curGroup[0];
+    menu.style.top=($("#mobilenav").getBoundingClientRect().bottom||96)+"px";
+    menu.innerHTML=`
+      <div class="mquick">
         <button class="btn primary" data-mcapture style="padding:12px 8px">+ Quick capture</button>
         <button class="btn" data-msmart style="padding:12px 8px">✨ Smart capture</button>
-      </div>
-      ${groups.map(([name,views])=>`
-        <div class="eyebrow" style="margin:12px 0 6px">${name}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          ${views.map(v=>`<button class="btn" data-mnav="${v[0]}" style="padding:12px 8px;text-align:centre">${v[1]}</button>`).join("")}
-          ${name==="Money"?`<a class="btn" href="https://money.forgiatus.com/" target="_blank" rel="noopener" style="padding:12px 8px;text-align:centre;text-decoration:none">Family Money ↗</a>`:""}
-        </div>`).join("")}
-      <div class="modalfoot"><button class="btn" id="moreClose">Close</button></div>
-    </div></div>`;
-    $("#moreClose").onclick=closeModal;
-    $$("#modalHost [data-mnav]").forEach(x=>x.onclick=()=>{ closeModal(); go(x.dataset.mnav); });
-    const qc=$("#modalHost [data-mcapture]"); if(qc) qc.onclick=()=>{ closeModal(); UI.captureModal(); };
-    const qs=$("#modalHost [data-msmart]"); if(qs) qs.onclick=()=>{ closeModal(); openSmartCapture(); };
+      </div>`+
+      groups.map(([name,views])=>{
+        const openNow=name===openSec;
+        return `<button class="msec ${openNow?"":"closed"}" data-msec="${name}">${name}<span class="chev">▾</span></button>
+        <div class="mviews ${openNow?"":"hidden"}" data-mviews="${name}">
+          ${views.map(v=>`<button class="mrow ${v[0]===cur?"active":""}" data-mnav="${v[0]}">${v[1]}</button>`).join("")}
+          ${name==="Money"?`<a class="mrow" href="https://money.forgiatus.com/" target="_blank" rel="noopener">Family Money ↗</a>`:""}
+        </div>`;
+      }).join("");
+    menu.classList.add("open"); scrim.classList.add("open");
+    const close=()=>{ menu.classList.remove("open"); scrim.classList.remove("open"); };
+    scrim.onclick=close;
+    menu.querySelectorAll("[data-msec]").forEach(b=>b.onclick=()=>{
+      const name=b.dataset.msec, vs=menu.querySelector(`[data-mviews="${name}"]`);
+      const opening=vs.classList.contains("hidden");
+      menu.querySelectorAll(".mviews").forEach(x=>x.classList.add("hidden"));
+      menu.querySelectorAll(".msec").forEach(x=>x.classList.add("closed"));
+      if(opening){ vs.classList.remove("hidden"); b.classList.remove("closed"); localStorage.setItem("gtd_mobsec",name); }
+    });
+    menu.querySelectorAll("[data-mnav]").forEach(x=>x.onclick=()=>{ close(); go(x.dataset.mnav); });
+    const qc=menu.querySelector("[data-mcapture]"); if(qc) qc.onclick=()=>{ close(); UI.captureModal(); };
+    const qs=menu.querySelector("[data-msmart]"); if(qs) qs.onclick=()=>{ close(); openSmartCapture(); };
   });
 
   // Search

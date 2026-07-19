@@ -125,13 +125,14 @@ function extractObj(src, name){
         uploadTaskFile: async f => ({path:'me1/task-1-' + f.name, name:f.name}),
         receiptUrl: async p => 'https://signed/' + p
       },
-      PushService: { notify: (...a) => notifies.push(a) }
+      PushService: { notify: (...a) => notifies.push(a) },
+      WhatsAppService: { send: (...a) => { stubs.waSent = (stubs.waSent||[]).concat([a]); return Promise.resolve(true); } }
     };
     const fnSrc = extractFn(gtdSrc, 'openPersonTaskModal');
     const openPersonTaskModal = new Function(
-      'document','window','$','$$','esc','toast','fillPeople','CloudService','PushService',
+      'document','window','$','$$','esc','toast','fillPeople','CloudService','PushService','WhatsAppService',
       fnSrc + '\nreturn openPersonTaskModal;'
-    )(d, w, stubs.$, stubs.$$, stubs.esc, stubs.toast, stubs.fillPeople, stubs.CloudService, stubs.PushService);
+    )(d, w, stubs.$, stubs.$$, stubs.esc, stubs.toast, stubs.fillPeople, stubs.CloudService, stubs.PushService, stubs.WhatsAppService);
 
     // Add mode
     openPersonTaskModal({id:'p1', display_name:'Tapiwa', email:'t@x.com'}, null);
@@ -146,6 +147,7 @@ function extractObj(src, name){
     assert(apiCalls.length === 1 && apiCalls[0].o.method === 'POST', 'direct add POSTs cloud_tasks (no capture step)');
     assert(apiCalls[0].o.body.assignee_id === 'p1' && apiCalls[0].o.body.title === 'Buy feed', 'task assigned straight to the person');
     assert(notifies.length === 1 && notifies[0][0] === 'p1', 'person is push-notified of the new task');
+    assert((stubs.waSent||[]).length === 1 && stubs.waSent[0][0] === 'p1' && /Buy feed/.test(stubs.waSent[0][1]), 'WhatsApp notification fired with the task title');
     assert(stubs.fillPeopleCalled, 'people view refreshes after save');
 
     // Edit mode
@@ -258,17 +260,56 @@ function extractObj(src, name){
   }
 
 
-  console.log('--- Mobile More sheet: grouped like the rail ---');
+  console.log('--- Mobile menu: top accordion grouped like the rail ---');
   {
     const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
     const i = gtd.indexOf('const mm=$("#mobMore")');
-    const sheet = gtd.slice(i, i+3000);
+    const sheet = gtd.slice(i, i+4200);
     ['Engage','Process','Do','People & work','Money','Horizons','Library','Reflect','System'].forEach(g=>{
       assert(sheet.includes('"' + g + '"'), 'More sheet group present: ' + g);
     });
     assert(sheet.includes('["money","Money"]') && sheet.includes('["finance","Pipeline"]'), 'Money and Pipeline reachable on mobile');
     assert(sheet.includes('money.forgiatus.com'), 'Family Money link in the mobile Money group');
     assert(sheet.includes('data-mcapture') && sheet.includes('data-msmart'), 'capture shortcuts kept at the top');
+  }
+
+
+  console.log('--- WhatsApp notifications ---');
+  {
+    const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    assert(fs.existsSync(path.join(ROOT,'supabase/functions/notify-whatsapp/index.ts')), 'notify-whatsapp edge function file present');
+    const fnSrc = fs.readFileSync(path.join(ROOT,'supabase/functions/notify-whatsapp/index.ts'),'utf8');
+    assert(fnSrc.includes('api.callmebot.com') && fnSrc.includes('encodeURIComponent'), 'edge function calls CallMeBot with encoded params');
+    assert(gtd.includes('functions/v1/notify-whatsapp'), 'app calls the edge function');
+    assert(gtd.includes('waContacts'), 'per-person WhatsApp config stored in synced state');
+    assert(gtd.includes('openWaModal') && gtd.includes('id="pplWa"'), 'People view has the WhatsApp config button and modal');
+    assert(gtd.includes('WhatsAppService.send(sel.id,"New task from "'), 'task creation fires a WhatsApp message');
+    assert(gtd.includes('WhatsAppService.send(assigneeId,"New task from "'), 'clarify delegation fires a WhatsApp message');
+    assert(gtd.includes('id="waTest"'), 'send-test button present');
+
+    // functional: cfg/set round-trip
+    const src = gtdSrc;
+    const i0 = src.indexOf('const WhatsAppService={');
+    const i1 = src.indexOf('};', src.indexOf('return r.ok;')) + 2;
+    const AppState = {data:{}};
+    let dirty = 0;
+    const WhatsAppService = new Function('AppState','markDirty','CloudService','CLOUD',
+      src.slice(i0, i1).replace('const WhatsAppService=','return ') )(AppState, ()=>dirty++, {session:null}, {url:'',key:''});
+    WhatsAppService.set('p1','+447700900123','9911');
+    assert(WhatsAppService.cfg('p1').phone === '+447700900123' && dirty === 1, 'set stores config and marks dirty');
+    const sent = await WhatsAppService.send('p1','hello');
+    assert(sent === false, 'send is a safe no-op without a session');
+    WhatsAppService.set('p1','','');
+    assert(WhatsAppService.cfg('p1') === null, 'clearing removes the config');
+  }
+
+  console.log('--- Mobile accordion behaviour hooks ---');
+  {
+    const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    assert(gtd.includes('id="mobMenu"') && gtd.includes('id="mobScrim"'), 'menu panel and scrim exist');
+    assert(gtd.includes('gtd_mobsec'), 'open section persisted');
+    assert(gtd.includes('data-msec') && gtd.includes('data-mviews'), 'accordion sections wired');
+    assert(gtd.includes('curGroup'), 'current view auto-opens its group');
   }
 
   console.log('--- Static: wiring present in built files ---');
