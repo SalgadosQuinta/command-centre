@@ -1847,12 +1847,13 @@ async function openLedgerModal(){
 function openDelegateModal(taskId){
   const t=TaskService.get(taskId); if(!t) return;
   CloudService.people().then(people=>{
-    const others=people.filter(p=>p.id!==CloudService.me().id&&!p.archived);
-    if(!others.length){ toast("No other people have accounts yet","warn"); return; }
+    const meDel=CloudService.me().id;
+    const others=people.filter(p=>!p.archived).sort((a,b)=>(a.id===meDel?-1:0)-(b.id===meDel?-1:0));
+    if(!others.length){ toast("No people have accounts yet","warn"); return; }
     $("#modalHost").innerHTML=`<div class="overlay" id="ovDel"><div class="modal" style="max-width:480px">
       <h2><span class="eyebrow">Delegate task</span></h2>
       <p style="font-size:13px;margin-bottom:10px"><b>${esc(t.title)}</b></p>
-      <div class="field"><label>Send to</label><select id="dlPerson">${others.map(p=>`<option value="${esc(p.id)}" data-email="${esc(p.email)}">${esc(p.display_name||p.email)}</option>`).join("")}</select></div>
+      <div class="field"><label>Send to</label><select id="dlPerson">${others.map(p=>`<option value="${esc(p.id)}" data-email="${esc(p.email)}">${esc(p.display_name||p.email)}${p.id===meDel?" (you — your Tasks app)":""}</option>`).join("")}</select></div>
       <div class="field"><label>Note for them</label><textarea id="dlNote" rows="3">${esc(t.description||"")}</textarea></div>
       <div class="field"><label>Due date</label><input id="dlDue" type="date" value="${esc(t.dueDate||"")}"></div>
       <div class="modalfoot"><button class="btn" id="dlCancel">Cancel</button><button class="btn primary" id="dlSend">Send task</button></div>
@@ -2041,7 +2042,9 @@ async function fillPeople(){
       CloudService.api(`cloud_tasks?owner_id=eq.${me}&select=id,title,status,due_date,assignee_id,comments,created_at,notes,priority,attachments&order=created_at.desc`)
     ]);
     if(!$("#pplBody")) return;
+    const selfP=people.find(p=>p.id===me);
     const othersAll=people.filter(p=>p.id!==me);
+    if(selfP) othersAll.unshift(selfP);
     const others=othersAll.filter(p=>!p.archived);
     const archived=othersAll.filter(p=>p.archived);
     if(!othersAll.length){ body.innerHTML=`<div class="card"><p style="color:var(--muted);font-size:13px">No other people have accounts yet. Use + Add person to create their account.</p></div>`; return; }
@@ -2049,7 +2052,7 @@ async function fillPeople(){
     const fmt=n=>{const v=Math.round(n*100)/100; return (v<0?"−":"")+Math.abs(v).toFixed(2);};
     const chips=`<div class="filterbar" style="margin-bottom:14px">
       <button class="btn sm ${AppState.peopleSel==="overview"?"primary":""}" data-ppl="overview">Overview</button>
-      ${others.map(p=>`<button class="btn sm ${p.id===AppState.peopleSel?"primary":""}" data-ppl="${esc(p.id)}">${esc(p.display_name||p.email)}</button>`).join("")}
+      ${others.map(p=>`<button class="btn sm ${p.id===AppState.peopleSel?"primary":""}" data-ppl="${esc(p.id)}">${esc(p.display_name||p.email)}${p.id===me?" (you)":""}</button>`).join("")}
       ${archived.map(p=>`<button class="btn sm ghost ${p.id===AppState.peopleSel?"primary":""}" data-ppl="${esc(p.id)}" style="opacity:.6">${esc(p.display_name||p.email)} · archived</button>`).join("")}</div>`;
 
     if(AppState.peopleSel==="overview"){
@@ -2141,7 +2144,7 @@ async function fillPeople(){
             <div class="mono" style="font-size:11px;color:var(--faint);margin-top:4px">Given ${esc(c)} ${fmt(floats[c]||0)} · spent ${esc(c)} ${fmt(spends[c]||0)}</div>
           </div>`;}).join("")
         :`<p style="color:var(--muted);font-size:12.5px">No money entries with this person yet.</p>`}
-        <div class="modalfoot" style="justify-content:flex-start"><button class="btn primary" id="pplFloat">Give float</button><button class="btn" id="pplLedger">Full ledger</button><button class="btn ghost" id="pplReset">Reset password</button>${sel.archived?`<button class="btn" id="pplUnarch">Unarchive</button>`:`<button class="btn ghost" id="pplArch">Archive</button>`}<button class="btn ghost danger" id="pplDelete" style="border-color:var(--danger);color:var(--danger)">Delete…</button></div>
+        <div class="modalfoot" style="justify-content:flex-start"><button class="btn primary" id="pplFloat">Give float</button><button class="btn" id="pplLedger">Full ledger</button>${sel.id===me?"":`<button class="btn ghost" id="pplReset">Reset password</button>${sel.archived?`<button class="btn" id="pplUnarch">Unarchive</button>`:`<button class="btn ghost" id="pplArch">Archive</button>`}<button class="btn ghost danger" id="pplDelete" style="border-color:var(--danger);color:var(--danger)">Delete…</button>`}</div>
         ${rows.length?`<div class="grouphead" style="margin-top:12px"><span class="eyebrow">Recent entries</span></div>
         ${rows.slice(0,8).map(r=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px">
           <span>${r.type==="float"?"Float":"Spend"}${r.description?" — "+esc(r.description):""}${r.receipt_path?` <a href="#" data-receipt="${esc(r.receipt_path)}" style="color:var(--accent)">receipt</a>`:""}</span>
