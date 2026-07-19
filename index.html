@@ -2204,8 +2204,12 @@ UI.settings = function(){
   const m=AppState.data.metadata;
   const modeName={live:"Connected (live file)",readonly:"Read only",cached:"Cached copy",demo:"Demo mode"}[AppState.storageMode];
   return `
-  <div class="viewhead"><div><h1>Data &amp; settings</h1><div class="sub">Local file connection, backups and preferences</div></div></div>
+  <div class="viewhead"><div><h1>Data &amp; settings</h1><div class="sub">Local file connection, backups, preferences and notifications</div></div></div>
   <div class="grid c2">
+    <div class="card" style="grid-column:1/-1"><h2><span class="eyebrow">WhatsApp notifications — everyone you assign tasks to</span></h2>
+      <p class="sub" style="margin:6px 0 8px">Family members and task-only people alike (e.g. your assistant). Their one-off opt-in: save <b>+34&nbsp;644&nbsp;44&nbsp;21&nbsp;48</b> in their phone, WhatsApp it "I allow callmebot to send me messages", and it replies with their personal API key — they read that back to you. You do the rest here. "Task set" is the important one; leave "Task updated" off unless someone wants the noise.</p>
+      <div id="npAdmin" class="mono" style="font-size:12px;color:var(--faint)">loading people…</div>
+    </div>
     <div class="card"><h2><span class="eyebrow">Data file</span></h2>
       <table class="plain"><tbody>
         <tr><td class="eyebrow" style="width:140px">Data file</td><td class="mono" style="font-size:12px">${esc(AppState.fileName||APP_CONFIG.dataSource.fileName)}</td></tr>
@@ -2535,6 +2539,63 @@ UI.money = function(){
   </div>
   <p class="sub" style="margin-top:10px">Figures are this month's in/out plus what's due in the next 7 days. Private is your own space only; PINs in the money app do not gate this summary — lock this view with the Finance PIN if needed.</p>`;
 };
+async function fillNotifyAdmin(){
+  const host=document.getElementById("npAdmin");
+  if(!host||!CloudService.session) return;
+  try{
+    const [people, prefs, famRows]=await Promise.all([
+      CloudService.people(),
+      CloudService.api("fam_notify_prefs?select=*").catch(()=>[]),
+      CloudService.api("fam_members?select=user_id").catch(()=>[])
+    ]);
+    const fam={}; (famRows||[]).forEach(r=>fam[r.user_id]=1);
+    const meId=CloudService.me().id;
+    host.innerHTML=(people||[]).filter(p=>p.id!==meId).map(p=>{
+      const pr=(prefs||[]).find(x=>x.user_id===p.id)||{};
+      const ev=pr.events||{task_assigned:true, task_updated:false};
+      return `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)" data-nprow="${esc(p.id)}">
+        <div style="min-width:150px"><b style="color:var(--text)">${esc(p.display_name||p.email)}</b>
+          <span class="eyebrow" style="margin-left:6px;color:${fam[p.id]?"var(--accent)":"var(--faint)"}">${fam[p.id]?"family":"task-only"}</span>
+          <div style="color:${pr.wa_enabled?"var(--ok)":"var(--faint)"}">${pr.wa_enabled?"WhatsApp on":"off"}</div></div>
+        <input data-np="wa_phone" placeholder="+447700900123" value="${esc(pr.wa_phone||"")}" style="width:150px">
+        <input data-np="wa_key" placeholder="API key" value="${esc(pr.wa_key||"")}" style="width:90px">
+        <label style="display:flex;gap:4px;align-items:center"><input type="checkbox" data-np="wa_enabled" ${pr.wa_enabled?"checked":""}> On</label>
+        <label style="display:flex;gap:4px;align-items:center" title="When a task is set for them"><input type="checkbox" data-np="ev_task_assigned" ${ev.task_assigned!==false?"checked":""}> Task set</label>
+        <label style="display:flex;gap:4px;align-items:center" title="When one of their tasks is edited"><input type="checkbox" data-np="ev_task_updated" ${ev.task_updated===true?"checked":""}> Task updated</label>
+        <button class="btn sm" data-npsave="${esc(p.id)}">Save</button>
+        <button class="btn sm" data-nptest="${esc(p.id)}">Test</button>
+      </div>`;
+    }).join("")||"No people found yet.";
+    host.style.color="";
+    host.querySelectorAll("[data-npsave],[data-nptest]").forEach(b=>b.onclick=async()=>{
+      const uid=b.dataset.npsave||b.dataset.nptest;
+      const row=host.querySelector(`[data-nprow="${uid}"]`);
+      const val=k=>{ const el=row.querySelector(`[data-np="${k}"]`); return el.type==="checkbox"?el.checked:el.value.trim(); };
+      const body={user_id:uid, wa_phone:val("wa_phone")||null, wa_key:val("wa_key")||null,
+        wa_enabled:val("wa_enabled"),
+        events:{task_assigned:val("ev_task_assigned"), task_updated:val("ev_task_updated")},
+        updated_at:new Date().toISOString()};
+      b.disabled=true;
+      try{
+        if(b.dataset.nptest){
+          if(!body.wa_phone||!body.wa_key){ toast("Enter their number and API key first","warn"); b.disabled=false; return; }
+          const r=await fetch(`${CLOUD.url}/functions/v1/notify-whatsapp`,{method:"POST",
+            headers:{Authorization:"Bearer "+CloudService.session.access_token,apikey:CLOUD.key,"Content-Type":"application/json"},
+            body:JSON.stringify({phone:body.wa_phone,apikey:body.wa_key,text:"Test from the GTD console — WhatsApp alerts are working."})});
+          toast(r.ok?"Test sent — check their WhatsApp":"Test failed — check number, key, and that notify-whatsapp is deployed", r.ok?"ok":"warn");
+        }else{
+          await CloudService.api("fam_notify_prefs?on_conflict=user_id",{method:"POST",prefer:"return=minimal,resolution=merge-duplicates",body});
+          WhatsAppService._prefs=null; // sends pick up the change immediately
+          toast("Notification settings saved","ok");
+          fillNotifyAdmin();
+        }
+      }catch(err){ toast(err.message,"warn"); }
+      b.disabled=false;
+    });
+  }catch(e){
+    host.textContent="Unavailable — run Family Money migration 014 (fam_notify_prefs) first.";
+  }
+}
 async function fillMoneySummary(){
   if(!CloudService.session) return;
   const tStr=todayStr(), ym=tStr.slice(0,7), from=ym+"-01", soon=addDays(tStr,7);
@@ -3240,6 +3301,7 @@ function bindView(){
   $$("#view [data-delgoal]").forEach(b=>b.onclick=()=>{ if(confirm("Delete this goal?")){ GoalService.remove(b.dataset.delgoal); render(); } });
   fillGoalMetrics();
   if(AppState.currentView==="money") fillMoneySummary();
+  if(AppState.currentView==="settings") fillNotifyAdmin();
   $$("#view [data-habit]").forEach(cb=>cb.onchange=()=>{ HabitService.toggle(cb.dataset.habit,todayStr()); render(); });
   $$("#view [data-delhabit]").forEach(b=>b.onclick=()=>{ if(confirm("Delete this habit and its history?")){ HabitService.remove(b.dataset.delhabit); render(); } });
   const sb=$("#smartBtn"); if(sb) sb.onclick=()=>openSmartCapture();

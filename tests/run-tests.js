@@ -313,6 +313,19 @@ function extractObj(src, name){
     assert(gtd.includes('curGroup'), 'current view auto-opens its group');
   }
 
+
+  console.log('--- GTD notification admin (all task people) ---');
+  {
+    const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    assert(gtd.includes('id="npAdmin"'), 'Settings has the WhatsApp admin card');
+    assert(gtd.includes('AppState.currentView==="settings") fillNotifyAdmin()'), 'admin fill hooked to the Settings view');
+    assert(gtd.includes('fam_members?select=user_id'), 'family membership fetched for differentiation');
+    assert(gtd.includes('"family":"task-only"'), 'people badged family vs task-only');
+    assert(gtd.includes('on_conflict=user_id') && gtd.includes('merge-duplicates'), 'save upserts fam_notify_prefs');
+    assert(gtd.includes('WhatsAppService._prefs=null'), 'prefs cache invalidated after save');
+    assert(gtd.includes('migration 014'), 'helpful message when the prefs table is missing');
+  }
+
   console.log('--- Static: wiring present in built files ---');
   {
     const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
