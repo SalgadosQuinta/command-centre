@@ -2239,8 +2239,15 @@ async function fillPeople(){
 
     // tasks with this person: cloud-delegated + local waiting matches
     const theirCloud=cloudTasks.filter(t=>t.assignee_id===sel.id);
-    const localWaiting=TaskService.byStatus("waiting").filter(t=>personMatchesTask(sel,t));
-    const openCloud=theirCloud.filter(t=>!["done","declined"].includes(t.status));
+    const localWaiting=TaskService.byStatus("waiting").filter(t=>personMatchesTask(sel,t)&&pplInRange(t.waitingFor&&t.waitingFor.expectedDate||t.dueDate));
+    const pplRangeSpan=()=>{ const r=AppState.pplRange||"all", t=todayStr();
+      if(r==="day") return [t,t];
+      if(r==="week"){ const d=new Date(); d.setDate(d.getDate()-((d.getDay()+6)%7)); const f=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); return [f,addDays(f,6)]; }
+      if(r==="month"){ const d=new Date(); const f=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01"; const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(); return [f,d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(last).padStart(2,"0")]; }
+      return null; };
+    const pplInRange=ds=>{ const sp=pplRangeSpan(); if(!sp) return true; return !!ds&&ds<=sp[1]&&(ds>=sp[0]||ds<todayStr()); };
+    const openCloud=theirCloud.filter(t=>!["done","declined"].includes(t.status)&&pplInRange(t.due_date));
+    const _openCloudAllStates=theirCloud.filter(t=>!["done","declined"].includes(t.status));
     const doneCloud=theirCloud.filter(t=>["done","declined"].includes(t.status));
 
     body.innerHTML=chips+`
@@ -2262,6 +2269,7 @@ async function fillPeople(){
       </div>
       <div class="card">
         <h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="eyebrow">Tasks with ${esc(sel.display_name||sel.email)}</span><span style="display:flex;gap:6px"><span class="btn sm" id="pplWa" style="cursor:default;opacity:.85" title="WhatsApp alerts are managed in Julius Family Money → Admin → WhatsApp notifications">WhatsApp: managed in Admin</span><button class="btn sm primary" id="pplAddTask">+ Add task</button></span></h2>
+        <div style="display:flex;gap:6px;margin:4px 0 8px">${[["all","All"],["day","Day"],["week","Week"],["month","Month"]].map(([r,l])=>`<button class="btn sm ${(AppState.pplRange||"all")===r?"primary":""}" data-pplrange="${r}">${l}</button>`).join("")}${(AppState.pplRange||"all")!=="all"?`<span class="sub" style="align-self:center">overdue included · undated under All</span>`:""}</div>
         ${openCloud.length?`<div class="grouphead" style="margin-top:2px"><span class="eyebrow">Sent via cloud (${openCloud.length})</span></div>
           ${openCloud.map(t=>`<div data-ctask="${esc(t.id)}" style="padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer" title="Click to edit">
             <div style="font-size:13.5px;font-weight:600">${esc(t.title)}</div>
@@ -2273,13 +2281,14 @@ async function fillPeople(){
             <div style="font-size:13.5px">${esc(t.title)}</div>
             <div class="mono" style="font-size:10.5px;color:var(--faint)">${t.waitingFor.expectedDate?`expected ${esc(fmtDate(t.waitingFor.expectedDate))}`:"no expected date"}${t.cloud?` · ☁ ${esc(t.cloud.status.replace("_"," "))}`:""}</div>
           </div>`).join("")}`:""}
-        ${!openCloud.length&&!localWaiting.length?`<p style="color:var(--muted);font-size:12.5px">Nothing outstanding with this person.</p>`:""}
+        ${!openCloud.length&&!localWaiting.length?`<p style="color:var(--muted);font-size:12.5px">${(AppState.pplRange||"all")==="all"?"Nothing outstanding with this person.":"Nothing dated in this range — undated items are under All."}</p>`:""}
         ${doneCloud.length?`<div class="grouphead"><span class="eyebrow">Completed (${doneCloud.length})</span></div>
           <div style="opacity:.7">${doneCloud.slice(0,5).map(t=>`<div style="padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px;text-decoration:line-through;color:var(--faint)">${esc(t.title)}</div>`).join("")}</div>`:""}
       </div>
     </div>`;
     // bindings
     $$("#pplBody [data-ppl]").forEach(b=>b.onclick=()=>{ AppState.peopleSel=b.dataset.ppl; fillPeople(); });
+    $$("#pplBody [data-pplrange]").forEach(b=>b.onclick=()=>{ AppState.pplRange=b.dataset.pplrange; fillPeople(); });
     $$("#pplBody [data-task]").forEach(el=>el.onclick=()=>UI.taskDrawer(el.dataset.task));
     $$("#pplBody [data-receipt]").forEach(a=>a.onclick=async(e)=>{e.preventDefault(); try{ window.open(await CloudService.receiptUrl(a.dataset.receipt),"_blank"); }catch(err){ toast(err.message,"warn"); }});
     const pf=$("#pplFloat"); if(pf) pf.onclick=openLedgerModal;

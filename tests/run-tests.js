@@ -432,6 +432,18 @@ function extractObj(src, name){
     assert(gtd.includes('return "Overdue"'), 'range views surface overdue items');
   }
 
+  console.log('--- Static: range views in tasks app + people view ---');
+  {
+    const ta = fs.readFileSync(path.join(ROOT,'tasks','index.html'),'utf8');
+    assert(ta.includes('data-range="day"')===false && ta.includes('["day","Day"]'), 'tasks app range buttons generated');
+    assert(ta.includes('function rangeSpan()') && ta.includes('const inRange='), 'tasks app range helpers present');
+    assert(ta.includes('dateGroupHTML(open.filter(inRange),true)') && ta.includes('dateGroupHTML(open.filter(inRange),false)'), 'both tabs honour the range');
+    assert(ta.includes('[data-range]").forEach'), 'tasks app range buttons wired');
+    const gtd2 = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    assert(gtd2.includes('data-pplrange') && gtd2.includes('[data-pplrange]").forEach'), 'people view range buttons present and wired');
+    assert(gtd2.includes('pplInRange(t.due_date)'), 'people view cloud tasks filtered by range');
+  }
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

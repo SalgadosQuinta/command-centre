@@ -224,6 +224,43 @@ const inboxTasks=()=>ALL.filter(t=>t.assignee_id===Cloud.me().id&&t.owner_id!==C
 const myTasks=()=>ALL.filter(t=>t.owner_id===Cloud.me().id&&t.assignee_id===Cloud.me().id);
 const isClosed=t=>["done","declined"].includes(t.status);
 const isOver=t=>t.due_date&&!isClosed(t)&&t.due_date<todayStr();
+/* ---- Day / Week / Month range views (overdue always included) ---- */
+let RANGE="all";
+function rangeSpan(){
+  const t=todayStr();
+  if(RANGE==="day") return [t,t];
+  if(RANGE==="week"){
+    const d=new Date(); d.setDate(d.getDate()-((d.getDay()+6)%7));
+    const f=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    const e=new Date(d); e.setDate(d.getDate()+6);
+    return [f, e.getFullYear()+"-"+String(e.getMonth()+1).padStart(2,"0")+"-"+String(e.getDate()).padStart(2,"0")];
+  }
+  if(RANGE==="month"){
+    const d=new Date();
+    const f=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";
+    const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+    return [f, d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(last).padStart(2,"0")];
+  }
+  return null;
+}
+const inRange=t=>{ const s=rangeSpan(); if(!s) return true; return !!t.due_date&&t.due_date<=s[1]&&(t.due_date>=s[0]||t.due_date<todayStr()); };
+const rangeBar=()=>`<div class="card" style="padding:8px 10px;display:flex;gap:6px;flex-wrap:wrap">
+  ${[["all","All"],["day","Day"],["week","Week"],["month","Month"]].map(([r,l])=>`<button class="btn sm ${RANGE===r?"primary":""}" data-range="${r}">${l}</button>`).join("")}
+  ${RANGE!=="all"?`<span class="sub" style="align-self:center">overdue included · undated under All</span>`:""}</div>`;
+function dateGroupHTML(list,mine){
+  const tStr=todayStr(), groups={};
+  list.forEach(t=>{
+    const k=t.due_date<tStr?"Overdue":t.due_date===tStr?"Today":new Date(t.due_date+"T12:00:00").toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"});
+    (groups[k]=groups[k]||[]).push(t);
+  });
+  const keys=Object.keys(groups).sort((a,b)=>{
+    const ord=k=>k==="Overdue"?"0":k==="Today"?"1":(groups[k][0].due_date||"9999");
+    return String(ord(a)).localeCompare(String(ord(b)));
+  });
+  if(!keys.length) return `<div class="card"><div class="empty">Nothing dated for this ${RANGE}. Undated tasks are under All.</div></div>`;
+  return keys.map(k=>`<div class="grouphead"><span class="eyebrow" ${k==="Overdue"?'style="color:var(--danger)"':""}>${esc(k)}</span> <span class="badge">${groups[k].length}</span></div>
+    <div class="card" style="margin-top:4px">${groups[k].map(t=>taskHTML(t,mine)).join("")}</div>`).join("");
+}
 
 async function loadAll(){
   const me=Cloud.me().id;
@@ -291,7 +328,10 @@ function dashHTML(){
 function inboxHTML(){
   const items=inboxTasks();
   const open=items.filter(t=>!isClosed(t)), closed=items.filter(isClosed);
-  return dashHTML()
+  if(RANGE!=="all"){
+    return dashHTML()+rangeBar()+dateGroupHTML(open.filter(inRange),false)+delegatedHTML();
+  }
+  return dashHTML()+rangeBar()
     +(items.length?"":`<div class="card"><div class="empty">Nothing in your inbox yet. Tasks other people send you will appear here.</div></div>`)
     +(open.length?`<div class="card">${open.map(t=>taskHTML(t,false)).join("")}</div>`:"")
     +(closed.length?`<div class="grouphead"><span class="eyebrow">Completed</span></div><div class="card" style="opacity:.75">${closed.map(t=>taskHTML(t,false)).join("")}</div>`:"")
@@ -338,7 +378,9 @@ function mineHTML(){
       </div>
     </details>
   </div>
-  ${open.length?Object.keys(byCat).sort().map(k=>`
+  ${rangeBar()}
+  ${RANGE!=="all"?dateGroupHTML(open.filter(inRange),true)
+  :open.length?Object.keys(byCat).sort().map(k=>`
     <div class="grouphead"><span class="eyebrow">${esc(k)}</span> <span class="badge">${byCat[k].length}</span></div>
     <div class="card" style="margin-top:4px">${byCat[k].map(t=>taskHTML(t,true)).join("")}</div>`).join("")
   :`<div class="card"><div class="empty">No tasks of your own yet — add one above.</div></div>`}
@@ -554,6 +596,7 @@ function openComment(t){
 }
 
 function bind(){
+  $$("#content [data-range]").forEach(b=>b.onclick=()=>{RANGE=b.dataset.range;renderApp();});
   $$("#content [data-act]").forEach(b=>b.onclick=async()=>{
     const body={status:b.dataset.act}; if(b.dataset.act==="done")body.completed_at=nowISO();
     try{await patchTask(b.dataset.id,body);renderApp();toast(b.dataset.act==="done"?"Marked done":"Updated");
