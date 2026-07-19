@@ -2206,7 +2206,7 @@ UI.settings = function(){
   return `
   <div class="viewhead"><div><h1>Data &amp; settings</h1><div class="sub">Local file connection, backups, preferences and notifications</div></div></div>
   <div class="grid c2">
-    <div class="card" style="grid-column:1/-1"><h2><span class="eyebrow">WhatsApp notifications — everyone you assign tasks to</span></h2>
+    <div class="card" style="grid-column:1/-1"><h2><span class="eyebrow">WhatsApp notifications — everyone, including you</span></h2>
       <p class="sub" style="margin:6px 0 8px">Family members and task-only people alike (e.g. your assistant). Their one-off opt-in: save <b>+34&nbsp;644&nbsp;44&nbsp;21&nbsp;48</b> in their phone, WhatsApp it "I allow callmebot to send me messages", and it replies with their personal API key — they read that back to you. You do the rest here. "Task set" is the important one; leave "Task updated" off unless someone wants the noise.</p>
       <div id="npAdmin" class="mono" style="font-size:12px;color:var(--faint)">loading people…</div>
     </div>
@@ -2550,11 +2550,12 @@ async function fillNotifyAdmin(){
     ]);
     const fam={}; (famRows||[]).forEach(r=>fam[r.user_id]=1);
     const meId=CloudService.me().id;
-    host.innerHTML=(people||[]).filter(p=>p.id!==meId).map(p=>{
+    const listed=(people||[]).slice().sort((a,b)=>(a.id===meId?-1:0)-(b.id===meId?-1:0));
+    host.innerHTML=listed.map(p=>{
       const pr=(prefs||[]).find(x=>x.user_id===p.id)||{};
       const ev=pr.events||{task_assigned:true, task_updated:false};
       return `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)" data-nprow="${esc(p.id)}">
-        <div style="min-width:150px"><b style="color:var(--text)">${esc(p.display_name||p.email)}</b>
+        <div style="min-width:150px"><b style="color:var(--text)">${esc(p.display_name||p.email)}${p.id===meId?" (you)":""}</b>
           <span class="eyebrow" style="margin-left:6px;color:${fam[p.id]?"var(--accent)":"var(--faint)"}">${fam[p.id]?"family":"task-only"}</span>
           <div style="color:${pr.wa_enabled?"var(--ok)":"var(--faint)"}">${pr.wa_enabled?"WhatsApp on":"off"}</div></div>
         <input data-np="wa_phone" placeholder="+447700900123" value="${esc(pr.wa_phone||"")}" style="width:150px">
