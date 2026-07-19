@@ -326,6 +326,39 @@ function extractObj(src, name){
     assert(gtd.includes('migration 014'), 'helpful message when the prefs table is missing');
   }
 
+
+  console.log('--- Tasks app: assignee-only lists + reassignment ---');
+  {
+    const tsrc = fs.readFileSync(path.join(ROOT,'tasks/index.html'),'utf8');
+    // dashboard and calendar draw from assignedToMe, never ALL
+    assert(tsrc.includes('const open=assignedToMe().filter'), 'dashboard counts only tasks assigned to me');
+    assert(tsrc.includes('assignedToMe().forEach(t=>{if(t.due_date'), 'calendar shows only tasks assigned to me');
+    assert(tsrc.includes('delegatedByMe'), 'delegated-by-me helper exists');
+    assert(tsrc.includes('Sent to others — waiting on them'), 'delegated tasks shown in their own labelled section');
+    assert(tsrc.includes('assignee:assignee_id(email,display_name)'), 'assignee names fetched for the delegated view');
+    // reassignment
+    assert(tsrc.includes('openReassign') && tsrc.includes('data-reassign'), 'reassign control wired');
+    assert(tsrc.includes('{assignee_id:who,status:"sent"}'), 'reassign patches assignee and resets status');
+    assert(tsrc.includes('"Task reassigned to you"'), 'new assignee push-notified');
+    assert(tsrc.includes('fam_notify_prefs?user_id=eq.') && tsrc.includes('task_assigned'), 'WhatsApp best-effort respects admin prefs');
+
+    // functional: the filters themselves
+    const helpers = ['const assignedToMe', 'const delegatedByMe', 'const inboxTasks', 'const myTasks'];
+    const i0 = tsrc.indexOf(helpers[0]);
+    const i1 = tsrc.indexOf('const isClosed');
+    const me = {id:'me1'};
+    const mk = new Function('ALL','Cloud', tsrc.slice(i0,i1) + '\nreturn {assignedToMe,delegatedByMe,inboxTasks,myTasks};');
+    const ALL=[
+      {id:'a', owner_id:'me1', assignee_id:'me1'},   // my own
+      {id:'b', owner_id:'other', assignee_id:'me1'}, // inbox
+      {id:'c', owner_id:'me1', assignee_id:'brandon'} // delegated (the bug)
+    ];
+    const f = mk(ALL, {me:()=>me});
+    assert(f.assignedToMe().map(t=>t.id).join(',')==='a,b', 'assignedToMe excludes tasks delegated to Brandon');
+    assert(f.delegatedByMe().map(t=>t.id).join(',')==='c', 'delegatedByMe catches exactly the delegated task');
+    assert(f.inboxTasks().map(t=>t.id).join(',')==='b' && f.myTasks().map(t=>t.id).join(',')==='a', 'inbox and my-tasks unchanged');
+  }
+
   console.log('--- Static: wiring present in built files ---');
   {
     const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');

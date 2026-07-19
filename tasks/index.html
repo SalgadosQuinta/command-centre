@@ -218,6 +218,8 @@ const Push={
 };
 let ALL=[],TX=[],PROFILES=[],TAB="inbox",CALM=null,CALSEL=null,SHOWDONE=false;
 
+const assignedToMe=()=>ALL.filter(t=>t.assignee_id===Cloud.me().id);
+const delegatedByMe=()=>ALL.filter(t=>t.owner_id===Cloud.me().id&&t.assignee_id!==Cloud.me().id);
 const inboxTasks=()=>ALL.filter(t=>t.assignee_id===Cloud.me().id&&t.owner_id!==Cloud.me().id);
 const myTasks=()=>ALL.filter(t=>t.owner_id===Cloud.me().id&&t.assignee_id===Cloud.me().id);
 const isClosed=t=>["done","declined"].includes(t.status);
@@ -226,7 +228,7 @@ const isOver=t=>t.due_date&&!isClosed(t)&&t.due_date<todayStr();
 async function loadAll(){
   const me=Cloud.me().id;
   [ALL,TX,PROFILES]=await Promise.all([
-    Cloud.api(`cloud_tasks?or=(assignee_id.eq.${me},owner_id.eq.${me})&order=created_at.desc&select=*,owner:owner_id(email,display_name)`),
+    Cloud.api(`cloud_tasks?or=(assignee_id.eq.${me},owner_id.eq.${me})&order=created_at.desc&select=*,owner:owner_id(email,display_name),assignee:assignee_id(email,display_name)`),
     Cloud.api(`transactions?person_id=eq.${me}&order=created_at.desc&select=*,owner:ledger_owner_id(email,display_name)`),
     Cloud.api(`profiles?select=id,email,display_name&order=display_name`)
   ]);
@@ -259,7 +261,7 @@ function renderApp(){
 
 /* ---------- INBOX (tasks sent to me) ---------- */
 function dashHTML(){
-  const open=ALL.filter(t=>!isClosed(t));
+  const open=assignedToMe().filter(t=>!isClosed(t));
   const tStr=todayStr();
   const overdue=open.filter(t=>t.due_date&&t.due_date<tStr).sort((a,b)=>a.due_date.localeCompare(b.due_date));
   const today=open.filter(t=>t.due_date===tStr);
@@ -292,7 +294,27 @@ function inboxHTML(){
   return dashHTML()
     +(items.length?"":`<div class="card"><div class="empty">Nothing in your inbox yet. Tasks other people send you will appear here.</div></div>`)
     +(open.length?`<div class="card">${open.map(t=>taskHTML(t,false)).join("")}</div>`:"")
-    +(closed.length?`<div class="grouphead"><span class="eyebrow">Completed</span></div><div class="card" style="opacity:.75">${closed.map(t=>taskHTML(t,false)).join("")}</div>`:"");
+    +(closed.length?`<div class="grouphead"><span class="eyebrow">Completed</span></div><div class="card" style="opacity:.75">${closed.map(t=>taskHTML(t,false)).join("")}</div>`:"")
+    +delegatedHTML();
+}
+/* Tasks I set for other people — shown separately so they never mix with my own list */
+function delegatedHTML(){
+  const items=delegatedByMe().filter(t=>!isClosed(t));
+  if(!items.length) return "";
+  return `<div class="grouphead"><span class="eyebrow">Sent to others — waiting on them</span></div>
+  <div class="card">${items.map(t=>`
+    <div class="task" data-id="${esc(t.id)}">
+      <div class="row" style="justify-content:space-between">
+        <div class="ttl">${esc(t.title)}</div>
+        <span class="pill ${esc(t.status)}">${esc(t.status.replace("_"," "))}</span>
+      </div>
+      <div class="meta">to ${esc(t.assignee?.display_name||t.assignee?.email||"?")}${t.due_date?` · due ${esc(fmtD(t.due_date))}`:""}</div>
+      <div class="row" style="margin-top:7px">
+        <button class="btn sm" data-reassign="${esc(t.id)}">Reassign</button>
+        <button class="btn sm ghost" data-comment="${esc(t.id)}">Comment</button>
+        <button class="btn sm ghost danger" data-del="${esc(t.id)}">Delete</button>
+      </div>
+    </div>`).join("")}</div>`;
 }
 
 /* ---------- MY TASKS (self-created, categorised) ---------- */
@@ -362,7 +384,7 @@ function calHTML(){
   const start=new Date(y,m,1-startDow);
   const monthName=first.toLocaleDateString("en-GB",{month:"long",year:"numeric"});
   const tasksByDate={};
-  ALL.forEach(t=>{if(t.due_date&&!["declined"].includes(t.status)){(tasksByDate[t.due_date]=tasksByDate[t.due_date]||[]).push(t);}});
+  assignedToMe().forEach(t=>{if(t.due_date&&!["declined"].includes(t.status)){(tasksByDate[t.due_date]=tasksByDate[t.due_date]||[]).push(t);}});
   const tStr=todayStr();
   let cells="";
   for(let i=0;i<42;i++){
@@ -453,6 +475,47 @@ async function addMine(){
   }
 }
 function closeModal(){$("#modalHost").innerHTML="";}
+async function openReassign(t){
+  let people=[];
+  try{ people=await Cloud.api("profiles?select=id,email,display_name&order=display_name")||[]; }
+  catch(e){ toast("Could not load people: "+e.message); return; }
+  const options=people.filter(p=>p.id!==t.assignee_id)
+    .map(p=>`<option value="${esc(p.id)}">${esc(p.display_name||p.email)}</option>`).join("");
+  $("#modalHost").innerHTML=`<div class="overlay" id="ovRe"><div class="modal">
+    <div class="eyebrow">Reassign task</div>
+    <div style="font-weight:600;margin:6px 0 10px">${esc(t.title)}</div>
+    <div class="meta" style="margin-bottom:8px">Currently with ${esc(t.assignee?.display_name||t.assignee?.email||"you")}</div>
+    <label class="lbl">Send to</label>
+    <select id="reWho">${options}</select>
+    <div class="row" style="margin-top:12px;justify-content:flex-end;gap:8px">
+      <button class="btn ghost" id="reCancel">Cancel</button>
+      <button class="btn primary" id="reGo">Reassign</button>
+    </div>
+  </div></div>`;
+  $("#reCancel").onclick=closeModal;
+  $("#reGo").onclick=async()=>{
+    const who=$("#reWho").value; if(!who) return;
+    const btn=$("#reGo"); btn.disabled=true;
+    try{
+      await patchTask(t.id,{assignee_id:who,status:"sent"});
+      const target=people.find(p=>p.id===who);
+      Push.notify(who,"Task reassigned to you",(Cloud.me().email)+" passed on: "+t.title,"./tasks/");
+      // WhatsApp best-effort: prefs are only readable if we're allowed to (admin or self)
+      try{
+        const prefs=await Cloud.api(`fam_notify_prefs?user_id=eq.${who}&select=*`);
+        const pr=prefs&&prefs[0];
+        if(pr&&pr.wa_enabled&&pr.wa_phone&&pr.wa_key&&((pr.events||{}).task_assigned!==false)){
+          await fetch(`${CLOUD.url}/functions/v1/notify-whatsapp`,{method:"POST",
+            headers:{Authorization:"Bearer "+Cloud.session.access_token,apikey:CLOUD.key,"Content-Type":"application/json"},
+            body:JSON.stringify({phone:pr.wa_phone,apikey:pr.wa_key,text:"Task reassigned to you by "+Cloud.me().email+": "+t.title})});
+        }
+      }catch(_e){/* silent — push already sent */}
+      closeModal();
+      await loadAll(); renderApp();
+      toast("Reassigned to "+((target&&(target.display_name||target.email))||"them"));
+    }catch(e){ toast(e.message); btn.disabled=false; }
+  };
+}
 function editMine(t){
   const cats=categories();
   $("#modalHost").innerHTML=`<div class="overlay" id="ovEdit"><div class="modal">
@@ -509,6 +572,7 @@ function bind(){
   });
   $$("#content [data-edit]").forEach(b=>b.onclick=()=>{const t=ALL.find(x=>x.id===b.dataset.edit);if(t)editMine(t);});
   $$("#content [data-comment]").forEach(b=>b.onclick=()=>{const t=ALL.find(x=>x.id===b.dataset.comment);if(t)openComment(t);});
+  $$("#content [data-reassign]").forEach(b=>b.onclick=()=>{const t=ALL.find(x=>x.id===b.dataset.reassign);if(t)openReassign(t);});
   const qa=$("#qAdd"); if(qa){qa.onclick=addMine; $("#qTitle").addEventListener("keydown",e=>{if(e.key==="Enter")addMine();});}
   const td=$("#toggleDone"); if(td)td.onclick=()=>{SHOWDONE=!SHOWDONE;renderApp();};
   const cp=$("#calPrev"); if(cp)cp.onclick=()=>{CALM.m--;if(CALM.m<0){CALM.m=11;CALM.y--;}renderApp();};
