@@ -1,5 +1,5 @@
 /* GTD Command Centre service worker */
-const CACHE = 'gtdcc-v32';
+const CACHE = 'gtdcc-v33';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -20,8 +20,14 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   const _u=new URL(e.request.url);
   if(_u.origin===location.origin&&(e.request.mode==='navigate'||_u.pathname.endsWith('/index.html')||_u.pathname.endsWith('/'))){
-    e.respondWith(fetch(e.request).then(res=>{ if(res&&res.ok){ const c=res.clone(); caches.open(CACHE).then(x=>x.put(e.request,c)); } return res; })
-      .catch(()=>caches.match(e.request).then(hit=>hit||caches.match('./index.html'))));
+    e.respondWith((function(){
+      const netP=fetch(e.request).then(res=>{ if(res&&res.ok){ const c=res.clone(); caches.open(CACHE).then(x=>x.put(e.request,c)); } return res; });
+      const timed=new Promise(resolve=>{ setTimeout(()=>{ caches.match(e.request).then(hit=>resolve(hit||caches.match('./index.html'))); },3500); });
+      return Promise.race([
+        netP.catch(()=>caches.match(e.request).then(hit=>hit||caches.match('./index.html'))),
+        timed
+      ]).then(res=>res||netP);
+    })());
     return;
   }
   e.respondWith(
