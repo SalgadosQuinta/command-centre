@@ -1421,6 +1421,59 @@ const CLOUD = {
   url: "https://ejlsbydsqjbxfwmvlapm.supabase.co",
   key: "sb_publishable_hB7hrrTkLMNh6FrH_FTUSg_cxIlM9Nt"
 };
+/* Offline layer: successful GETs are cached; when the network is down we
+   render last-known data with a banner. Additive task POSTs queue in an
+   outbox and replay in order on reconnect. Edits, delegation and admin
+   actions are deliberately online-only. */
+const OfflineService={
+  active:false,
+  isNet(e){ return e&&(e.name==="TypeError"||/fetch|network/i.test(e.message||"")); },
+  cache(path,d){ try{ localStorage.setItem("cc-cache:"+path, JSON.stringify({t:Date.now(),d:d})); }catch(e){} },
+  cached(path){ try{ const v=localStorage.getItem("cc-cache:"+path); return v?JSON.parse(v):null; }catch(e){ return null; } },
+  q(){ try{ return JSON.parse(localStorage.getItem("cc-outbox")||"[]"); }catch(e){ return []; } },
+  qSave(q){ try{ localStorage.setItem("cc-outbox",JSON.stringify(q)); }catch(e){} this.badge(); },
+  queue(path,opts){ const q=this.q(); q.push({path:path, body:opts.body, ts:Date.now()}); this.qSave(q); },
+  async replay(){
+    let q=this.q();
+    while(q.length){
+      const it=q[0];
+      try{
+        const r=await fetch(`${CLOUD.url}/rest/v1/${it.path}`,{method:"POST",
+          headers:{apikey:CLOUD.key,Authorization:"Bearer "+CloudService.session.access_token,"Content-Type":"application/json",Prefer:"return=minimal"},
+          body:JSON.stringify(it.body)});
+        if(r.ok||r.status===409){ q.shift(); this.qSave(q); continue; }
+        const t=await r.text();
+        q.shift(); this.qSave(q);
+        toast("One offline task couldn\u2019t sync ("+r.status+") — please re-add it. "+t.slice(0,80),"warn");
+      }catch(e){ if(this.isNet(e)) return; q.shift(); this.qSave(q); }
+    }
+  },
+  set(on,cachedAt){
+    this.active=on;
+    let el=document.getElementById("offline-banner");
+    if(on){
+      if(!el){
+        el=document.createElement("div"); el.id="offline-banner";
+        el.style.cssText="background:#3a2f14;color:#c9a227;font-size:12.5px;padding:6px 12px;text-align:center;border-bottom:1px solid #5a4a1e";
+        document.body.insertBefore(el,document.body.firstChild);
+      }
+      const n=this.q().length;
+      el.textContent="Offline — showing saved data"+(cachedAt?" from "+new Date(cachedAt).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}):"")+(n?" · "+n+" change(s) waiting to sync":"");
+    }else{
+      if(el&&el.parentNode) el.parentNode.removeChild(el);
+      if(this.q().length&&CloudService.signedIn()) this.replay().then(()=>{ if(!this.q().length) toast("Offline changes synced.","ok"); });
+    }
+    this.badge();
+  },
+  badge(){
+    const el=document.getElementById("offline-banner");
+    if(el&&this.active){ const n=this.q().length; el.textContent="Offline — showing saved data"+(n?" · "+n+" change(s) waiting to sync":""); }
+  }
+};
+if(typeof window!=="undefined"){
+  window.addEventListener("online",()=>OfflineService.set(false));
+  window.addEventListener("offline",()=>OfflineService.set(true));
+}
 const CloudService = {
   session: null,
   load(){ try{ this.session=JSON.parse(localStorage.getItem("gtdcc-cloud")||"null"); }catch(e){ this.session=null; } return this.session; },
@@ -1454,16 +1507,32 @@ const CloudService = {
   },
   async api(path,opts,retried){
     opts=opts||{};
-    const r=await fetch(`${CLOUD.url}/rest/v1/${path}`,{
-      method:opts.method||"GET",
-      headers:Object.assign({apikey:CLOUD.key,Authorization:"Bearer "+this.session.access_token,"Content-Type":"application/json",Prefer:opts.prefer||"return=representation"},opts.headers||{}),
-      body:opts.body?JSON.stringify(opts.body):undefined
-    });
+    const method=(opts.method||"GET").toUpperCase();
+    let r;
+    try{
+      r=await fetch(`${CLOUD.url}/rest/v1/${path}`,{
+        method:method,
+        headers:Object.assign({apikey:CLOUD.key,Authorization:"Bearer "+this.session.access_token,"Content-Type":"application/json",Prefer:opts.prefer||"return=representation"},opts.headers||{}),
+        body:opts.body?JSON.stringify(opts.body):undefined
+      });
+    }catch(e){
+      if(OfflineService.isNet(e)){
+        if(method==="GET"){ const c=OfflineService.cached(path); if(c){ OfflineService.set(true,c.t); return c.d; } }
+        if(method==="POST"&&/^cloud_tasks(\?|$)/.test(path)&&opts.prefer==="return=minimal"){
+          OfflineService.queue(path,opts); OfflineService.set(true);
+          toast("Saved offline — will sync when you\u2019re back online.","ok");
+          return null;
+        }
+        OfflineService.set(true);
+      }
+      throw e;
+    }
     if(r.status===401&&!retried&&await this.refresh()) return this.api(path,opts,true);
     if(!r.ok){ const t=await r.text(); throw new Error("Cloud error: "+t.slice(0,180)); }
+    OfflineService.set(false);
     const bodyText=await r.text();
-    if(!bodyText||!bodyText.trim()) return null;
-    try{ return JSON.parse(bodyText); }catch(e){ return null; }
+    if(!bodyText||!bodyText.trim()){ return null; }
+    try{ const d=JSON.parse(bodyText); if(method==="GET") OfflineService.cache(path,d); return d; }catch(e){ return null; }
   },
   async people(){ return this.api("profiles?select=id,email,display_name&order=display_name"); },
   async delegate(task,assigneeId,note,due){
@@ -1521,6 +1590,9 @@ const CloudService = {
   }
 };
 CloudService.load();
+if(typeof window!=="undefined"&&CloudService.signedIn()&&navigator.onLine&&OfflineService.q().length){
+  OfflineService.replay().then(()=>{ if(!OfflineService.q().length) toast("Offline changes synced.","ok"); });
+}
 
 const SmartCapture = {
   async analyse(text, images){

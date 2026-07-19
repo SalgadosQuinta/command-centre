@@ -98,7 +98,7 @@ function extractObj(src, name){
       localStorage: { getItem: k => store[k] || null, setItem: (k,v) => store[k] = v, removeItem: k => delete store[k] },
       CLOUD: null, console
     };
-    const src = 'const CLOUD={url:"https://x.test",key:"k"};\n' + extractObj(gtdSrc, 'CloudService') + '\nreturn CloudService;';
+    const src = 'const CLOUD={url:"https://x.test",key:"k"};\nconst OfflineService={set(){},cache(){},cached(){return null},isNet(){return false},q(){return[]},queue(){},replay(){},badge(){}};\n' + extractObj(gtdSrc, 'CloudService') + '\nreturn CloudService;';
     const CloudService = new Function('fetch','localStorage','console', src)(sandbox.fetch, sandbox.localStorage, console);
     CloudService.store({access_token:'EXPIRED', refresh_token:'RT1', user:{id:'u1'}});
     const rows = await CloudService.api('probe?select=*');
@@ -365,6 +365,61 @@ function extractObj(src, name){
     assert(gtd.includes('id="pplAddTask"'), 'Add task button in person view');
     assert(gtd.includes('notes,priority,attachments'), 'person view query includes attachments');
     assert(/tasksapp-v\d+/.test(fs.readFileSync(path.join(ROOT,'tasks','sw.js'),'utf8')), 'tasks SW cache versioned');
+  }
+
+  console.log('--- Offline layer ---');
+  {
+    // sandbox with just OfflineService + CloudService extracted
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<body></body>', {url:'https://example.test/'});
+    const w = dom.window;
+    let netDown = false, posts = [];
+    w.fetch = (url, opts) => {
+      if(netDown) return Promise.reject(new TypeError('Failed to fetch'));
+      if(opts && opts.method === 'POST'){ posts.push(String(url)); return Promise.resolve({ok:true, status:201, text:()=>Promise.resolve('')}); }
+      return Promise.resolve({ok:true, status:200, text:()=>Promise.resolve('[{"id":"x1","title":"cached row"}]')});
+    };
+    const sandbox = {window:w, document:w.document, localStorage:w.localStorage, navigator:w.navigator,
+      fetch:w.fetch, toast:()=>{}, console};
+    sandbox.globalThis = sandbox;
+    const vm = require('vm');
+    const src = gtdSrc;
+    const grab = (name) => {
+      const ctx = vm.createContext(sandbox);
+      return ctx;
+    };
+    // extract the OfflineService + CLOUD + CloudService definitions and run them
+    const m = src.match(/const CLOUD = \{[\s\S]*?\n\};[\s\S]*?const CloudService = \{[\s\S]*?\n\};/);
+    assert(m, 'offline/cloud source block found');
+    const ctx = vm.createContext(sandbox);
+    vm.runInContext(m[0], ctx);
+    const OS = vm.runInContext('OfflineService', ctx);
+    const CS = vm.runInContext('CloudService', ctx);
+    CS.session = {access_token:'AT', user:{id:'me'}};
+
+    // 1) GET caches, then serves from cache when the network dies
+    const d1 = await CS.api('cloud_tasks?select=*');
+    assert(Array.isArray(d1) && d1[0].id === 'x1', 'online GET returns rows');
+    netDown = true;
+    const d2 = await CS.api('cloud_tasks?select=*');
+    assert(Array.isArray(d2) && d2[0].title === 'cached row', 'offline GET served from cache');
+    assert(w.document.getElementById('offline-banner'), 'offline banner shown');
+
+    // 2) additive POST queues offline and replays exactly once
+    const r = await CS.api('cloud_tasks', {method:'POST', prefer:'return=minimal', body:{title:'queued task', owner_id:'me'}});
+    assert(r === null, 'offline POST returns null (queued)');
+    assert(OS.q().length === 1, 'task queued to outbox');
+    assert(posts.length === 0, 'nothing hit the network while offline');
+    netDown = false;
+    await OS.replay();
+    assert(OS.q().length === 0, 'outbox drained after replay');
+    assert(posts.length === 1, 'queued task replayed exactly once');
+
+    // 3) non-whitelisted POST does not queue
+    netDown = true;
+    let threw = false;
+    try{ await CS.api('transactions', {method:'POST', prefer:'return=minimal', body:{amount:1}}); }catch(e){ threw = true; }
+    assert(threw && OS.q().length === 0, 'non-whitelisted POST fails loudly rather than queuing');
   }
 
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
