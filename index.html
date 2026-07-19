@@ -1466,7 +1466,7 @@ const CLOUD = {
    actions are deliberately online-only. */
 const OfflineService={
   active:false,
-  isNet(e){ return e&&(e.name==="TypeError"||/fetch|network/i.test(e.message||"")); },
+  isNet(e){ return e&&(e.name==="TypeError"||e.name==="AbortError"||/fetch|network|abort/i.test(e.message||"")); },
   uid(){ return (CloudService.session&&CloudService.session.user&&CloudService.session.user.id)||"anon"; },
   cache(path,d){ try{ localStorage.setItem("cc-cache:"+this.uid()+":"+path, JSON.stringify({t:Date.now(),d:d})); }catch(e){} },
   cached(path){ try{ const v=localStorage.getItem("cc-cache:"+this.uid()+":"+path); return v?JSON.parse(v):null; }catch(e){ return null; } },
@@ -1549,13 +1549,18 @@ const CloudService = {
     opts=opts||{};
     const method=(opts.method||"GET").toUpperCase();
     let r;
+    const ctrl=(typeof AbortController!=="undefined")?new AbortController():null;
+    const timer=ctrl?setTimeout(()=>ctrl.abort(),opts.timeoutMs||8000):null;
     try{
       r=await fetch(`${CLOUD.url}/rest/v1/${path}`,{
         method:method,
         headers:Object.assign({apikey:CLOUD.key,Authorization:"Bearer "+this.session.access_token,"Content-Type":"application/json",Prefer:opts.prefer||"return=representation"},opts.headers||{}),
-        body:opts.body?JSON.stringify(opts.body):undefined
+        body:opts.body?JSON.stringify(opts.body):undefined,
+        signal:ctrl?ctrl.signal:undefined
       });
+      if(timer) clearTimeout(timer);
     }catch(e){
+      if(timer) clearTimeout(timer);
       if(OfflineService.isNet(e)){
         if(method==="GET"){ const c=OfflineService.cached(path); if(c){ OfflineService.set(true,c.t); return c.d; } }
         if(method==="POST"&&/^cloud_tasks(\?|$)/.test(path)&&opts.prefer==="return=minimal"){
