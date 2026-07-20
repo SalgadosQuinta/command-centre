@@ -1590,7 +1590,8 @@ const CloudService = {
     return rows[0];
   },
   async pull(){
-    const rows=await this.api(`cloud_tasks?owner_id=eq.${this.me().id}&select=id,status,assignee_id,updated_at,comments`);
+    const me=this.me().id;
+    const rows=await this.api(`cloud_tasks?owner_id=eq.${me}&select=id,status,assignee_id,updated_at,comments,title,category,notes,due_date,priority`);
     let changed=0;
     (AppState.data.tasks||[]).forEach(t=>{
       if(!t.cloud||!t.cloud.id) return;
@@ -1599,6 +1600,23 @@ const CloudService = {
         t.cloud.status=r.status; t.cloud.comments=(r.comments||[]).length; t.updatedAt=nowISO(); changed++;
       }
     });
+    // Capture: uncategorised tasks you added to yourself in the Tasks app
+    // flow into the GTD Inbox, once each. Categorised ones stay where they are.
+    AppState.data.capturedCloudIds = AppState.data.capturedCloudIds || [];
+    const seen = new Set(AppState.data.capturedCloudIds);
+    (AppState.data.tasks||[]).forEach(t=>{ if(t.cloud&&t.cloud.id) seen.add(t.cloud.id); });
+    let captured=0;
+    rows.filter(r=>r.assignee_id===me && !r.category && !["done","declined"].includes(r.status) && !seen.has(r.id))
+      .forEach(r=>{
+        TaskService.create({
+          title:r.title||"(untitled)", notes:r.notes||"", dueDate:r.due_date||null,
+          priority:r.priority||"normal", status:"inbox", clarified:false,
+          cloud:{id:r.id, status:r.status, comments:(r.comments||[]).length, source:"tasksapp"}
+        });
+        AppState.data.capturedCloudIds.push(r.id);
+        captured++;
+      });
+    if(captured){ toast(captured+" task"+(captured===1?"":"s")+" captured from the Tasks app into your Inbox","ok"); changed+=captured; }
     if(changed){ markDirty(); }
     return changed;
   },

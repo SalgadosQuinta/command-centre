@@ -162,6 +162,63 @@ const fmtD=s=>{if(!s)return "";const d=new Date(s);return d.toLocaleDateString("
 const todayStr=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");};
 const nowISO=()=>new Date().toISOString();
 
+/* Offline layer: GETs cached per user and served when the network is down
+   or stalls; task ADDS queue in an outbox and sync when back online.
+   Edits and status changes stay online-only. */
+const TOffline={
+  active:false,
+  uid(){ return (Cloud.session&&Cloud.session.user&&Cloud.session.user.id)||"anon"; },
+  isNet(e){ return e&&(e.name==="TypeError"||e.name==="AbortError"||/fetch|network|abort/i.test(e.message||"")); },
+  cache(p,d){ try{ localStorage.setItem("ta-cache:"+this.uid()+":"+p, JSON.stringify({t:Date.now(),d:d})); }catch(e){} },
+  cached(p){ try{ const v=localStorage.getItem("ta-cache:"+this.uid()+":"+p); return v?JSON.parse(v):null; }catch(e){ return null; } },
+  q(){ try{ return JSON.parse(localStorage.getItem("ta-outbox:"+this.uid())||"[]"); }catch(e){ return []; } },
+  qSave(q){ try{ localStorage.setItem("ta-outbox:"+this.uid(),JSON.stringify(q)); }catch(e){} this.badge(); },
+  queue(body){ const q=this.q(); q.push({body:body, ts:Date.now()}); this.qSave(q); },
+  async replay(){
+    let q=this.q();
+    let synced=0;
+    while(q.length){
+      const it=q[0];
+      try{
+        const r=await fetch(`${CLOUD.url}/rest/v1/cloud_tasks`,{method:"POST",
+          headers:{apikey:CLOUD.key,Authorization:"Bearer "+Cloud.session.access_token,"Content-Type":"application/json",Prefer:"return=minimal"},
+          body:JSON.stringify(it.body)});
+        if(r.ok||r.status===409){ q.shift(); this.qSave(q); synced++; continue; }
+        const t=await r.text();
+        q.shift(); this.qSave(q);
+        toast("One offline task couldn\u2019t sync ("+r.status+") \u2014 please re-add it. "+t.slice(0,80));
+      }catch(e){ if(this.isNet(e)) return synced; q.shift(); this.qSave(q); }
+    }
+    return synced;
+  },
+  set(on,cachedAt){
+    this.active=on;
+    let el=document.getElementById("offline-banner");
+    if(on){
+      if(!el){
+        el=document.createElement("div"); el.id="offline-banner";
+        el.style.cssText="background:#3a2f14;color:#c9a227;font-size:12.5px;padding:6px 12px;text-align:center;border-bottom:1px solid #5a4a1e";
+        document.body.insertBefore(el,document.body.firstChild);
+      }
+      const n=this.q().length;
+      el.textContent="Offline \u2014 showing saved data"+(cachedAt?" from "+new Date(cachedAt).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}):"")+(n?" \u00b7 "+n+" task(s) waiting to sync":"");
+    }else{
+      if(el&&el.parentNode) el.parentNode.removeChild(el);
+      if(this.q().length&&Cloud.session){
+        this.replay().then(n=>{ if(n&&!this.q().length){ toast(n+" offline task"+(n===1?"":"s")+" synced"); if(typeof loadAll==="function") loadAll().catch(()=>{}); } });
+      }
+    }
+    this.badge();
+  },
+  badge(){
+    const el=document.getElementById("offline-banner");
+    if(el&&this.active){ const n=this.q().length; el.textContent="Offline \u2014 showing saved data"+(n?" \u00b7 "+n+" task(s) waiting to sync":""); }
+  }
+};
+if(typeof window!=="undefined"){
+  window.addEventListener("online",()=>TOffline.set(false));
+  window.addEventListener("offline",()=>TOffline.set(true));
+}
 const Cloud={
   session:null,
   load(){try{this.session=JSON.parse(localStorage.getItem("tasks-cloud")||"null")}catch(e){this.session=null}},
@@ -178,11 +235,36 @@ const Cloud={
   async refresh(){if(!this.session)return false;try{const d=await this.auth("token?grant_type=refresh_token",{refresh_token:this.session.refresh_token});this.store({access_token:d.access_token,refresh_token:d.refresh_token,user:d.user});return true;}catch(e){this.store(null);return false;}},
   async api(path,opts,retried){
     opts=opts||{};
-    const r=await fetch(`${CLOUD.url}/rest/v1/${path}`,{method:opts.method||"GET",
-      headers:Object.assign({apikey:CLOUD.key,Authorization:"Bearer "+this.session.access_token,"Content-Type":"application/json",Prefer:opts.prefer||"return=representation"},opts.headers||{}),
-      body:opts.body?JSON.stringify(opts.body):undefined});
+    const method=(opts.method||"GET").toUpperCase();
+    const ctrl=(typeof AbortController!=="undefined")?new AbortController():null;
+    const timer=ctrl?setTimeout(()=>ctrl.abort(),opts.timeoutMs||8000):null;
+    let r;
+    try{
+      r=await fetch(`${CLOUD.url}/rest/v1/${path}`,{method:method,
+        headers:Object.assign({apikey:CLOUD.key,Authorization:"Bearer "+this.session.access_token,"Content-Type":"application/json",Prefer:opts.prefer||"return=representation"},opts.headers||{}),
+        body:opts.body?JSON.stringify(opts.body):undefined,
+        signal:ctrl?ctrl.signal:undefined});
+      if(timer) clearTimeout(timer);
+    }catch(e){
+      if(timer) clearTimeout(timer);
+      if(TOffline.isNet(e)){
+        if(method==="GET"){ const c=TOffline.cached(path); if(c){ TOffline.set(true,c.t); return c.d; } }
+        if(method==="POST"&&/^cloud_tasks(\?|$)/.test(path)&&opts.body&&opts.body.owner_id===opts.body.assignee_id){
+          TOffline.queue(opts.body); TOffline.set(true);
+          toast("Saved offline \u2014 will sync when you\u2019re back online.");
+          return [Object.assign({id:"off-"+Date.now(), created_at:new Date().toISOString(), comments:[], _pending:true}, opts.body)];
+        }
+        TOffline.set(true);
+      }
+      throw e;
+    }
     if(r.status===401&&!retried&&await this.refresh())return this.api(path,opts,true);
     if(!r.ok){throw new Error("Error: "+(await r.text()).slice(0,160));}
+    TOffline.set(false);
+    if(method==="GET"){
+      const bodyText0=await r.clone().text();
+      try{ TOffline.cache(path, bodyText0?JSON.parse(bodyText0):null); }catch(e){}
+    }
     const bodyText=await r.text();
     if(!bodyText||!bodyText.trim())return null;
     try{return JSON.parse(bodyText);}catch(e){return null;}
@@ -271,6 +353,9 @@ async function loadAll(){
     Cloud.api(`profiles?select=id,email,display_name&order=display_name`)
   ]);
   ALL=ALL||[];TX=TX||[];PROFILES=PROFILES||[];
+  // Show any offline-queued tasks (not yet on the server) in the list
+  TOffline.q().forEach((it,i)=>{ ALL.unshift(Object.assign({id:"off-q"+i, created_at:new Date(it.ts).toISOString(), comments:[], _pending:true, owner:{email:Cloud.me().email}}, it.body)); });
+  if(navigator.onLine&&TOffline.q().length){ TOffline.replay().then(n=>{ if(n){ toast(n+" offline task"+(n===1?"":"s")+" synced"); } }); }
   const unseen=inboxTasks().filter(t=>t.status==="sent");
   for(const t of unseen){
     try{await Cloud.api(`cloud_tasks?id=eq.${t.id}`,{method:"PATCH",body:{status:"seen",updated_at:nowISO()},prefer:"return=minimal"});t.status="seen";}catch(e){}
@@ -394,7 +479,7 @@ function taskHTML(t,mine){
   const over=isOver(t);
   return `<div class="task ${t.status==="sent"?"unseen":""} ${over?"overdue":""}" data-id="${esc(t.id)}">
     <div class="row" style="justify-content:space-between">
-      <div class="ttl ${isClosed(t)?"donetxt":""}">${esc(t.title)}</div>
+      <div class="ttl ${isClosed(t)?"donetxt":""}">${esc(t.title)}${t._pending?' <span class="sub" title="Waiting to sync">\u23f3</span>':""}</div>
       <span class="pill ${esc(t.status)}">${esc(t.status.replace("_"," "))}</span>
     </div>
     <div class="meta">${mine?(t.category?esc(t.category):""):"From "+esc(t.owner?.display_name||t.owner?.email||"")}${t.due_date?` · <span class="${over?"od":""}">due ${esc(fmtD(t.due_date))}${over?" · overdue":""}</span>`:""}${t.priority&&t.priority!=="normal"?` · ${esc(t.priority)}`:""}</div>

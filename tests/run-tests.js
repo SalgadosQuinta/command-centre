@@ -454,6 +454,42 @@ function extractObj(src, name){
     assert(ta2.includes('if(CALVIEW==="day") d.setDate(d.getDate()+n)') && ta2.includes('d.setDate(d.getDate()+7*n)'), 'prev/next step by 1 day / 7 days / 1 month per mode');
   }
 
+  console.log('--- Tasks app offline adds + Inbox capture ---');
+  {
+    const ta3 = fs.readFileSync(path.join(ROOT,'tasks','index.html'),'utf8');
+    assert(ta3.includes('const TOffline={'), 'tasks app has an offline service');
+    assert(ta3.includes('ta-outbox:'), 'outbox keyed per user');
+    assert(ta3.includes('opts.body.owner_id===opts.body.assignee_id'), 'only self-assigned adds queue offline');
+    assert(ta3.includes('_pending:true'), 'optimistic pending rows returned/rendered');
+    assert(ta3.includes('TOffline.replay()'), 'replay wired');
+    // Behavioural: queue then replay exactly once via extracted TOffline
+    const { JSDOM } = require('jsdom');
+    const vm = require('vm');
+    const dom = new JSDOM('<body></body>', {url:'https://example.test/'});
+    const w = dom.window;
+    let posts = 0, netDown = true;
+    w.fetch = (url, opts) => netDown ? Promise.reject(new TypeError('Failed to fetch'))
+      : (posts++, Promise.resolve({ok:true, status:201, text:()=>Promise.resolve('')}));
+    const m = ta3.match(/const TOffline=\{[\s\S]*?\n\};/);
+    assert(m, 'TOffline block extractable');
+    const sandbox = {window:w, document:w.document, localStorage:w.localStorage, navigator:w.navigator, fetch:w.fetch,
+      toast:()=>{}, CLOUD:{url:'https://x.test', key:'k'}, Cloud:{session:{access_token:'AT', user:{id:'me'}}}, console, setTimeout, clearTimeout};
+    sandbox.globalThis = sandbox;
+    const ctx = vm.createContext(sandbox);
+    vm.runInContext(m[0], ctx);
+    const TO = vm.runInContext('TOffline', ctx);
+    TO.queue({owner_id:'me', assignee_id:'me', title:'offline capture', status:'open', category:null});
+    assert(TO.q().length === 1, 'task queued');
+    netDown = false;
+    await TO.replay();
+    assert(TO.q().length === 0 && posts === 1, 'queued task synced exactly once');
+
+    const gtd3 = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    assert(gtd3.includes('capturedCloudIds'), 'capture dedupe ledger present');
+    assert(gtd3.includes('!r.category') && gtd3.includes('status:"inbox"'), 'only uncategorised tasks captured, into Inbox');
+    assert(gtd3.includes('source:"tasksapp"'), 'captured tasks carry provenance and cloud link');
+  }
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
