@@ -1474,6 +1474,11 @@ const OfflineService={
   qSave(q){ try{ localStorage.setItem("cc-outbox:"+this.uid(),JSON.stringify(q)); }catch(e){} this.badge(); },
   queue(path,opts){ const q=this.q(); q.push({path:path, body:opts.body, ts:Date.now()}); this.qSave(q); },
   async replay(){
+    if(this._replaying) return;
+    this._replaying=true;
+    try{ await this._replayInner(); } finally { this._replaying=false; }
+  },
+  async _replayInner(){
     let q=this.q();
     while(q.length){
       const it=q[0];
@@ -1489,6 +1494,7 @@ const OfflineService={
     }
   },
   set(on,cachedAt){
+    const wasActive=this.active;
     this.active=on;
     let el=document.getElementById("offline-banner");
     if(on){
@@ -1501,7 +1507,7 @@ const OfflineService={
       el.textContent="Offline — showing saved data"+(cachedAt?" from "+new Date(cachedAt).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}):"")+(n?" · "+n+" change(s) waiting to sync":"");
     }else{
       if(el&&el.parentNode) el.parentNode.removeChild(el);
-      if(this.q().length&&CloudService.signedIn()) this.replay().then(()=>{ if(!this.q().length) toast("Offline changes synced.","ok"); });
+      if(wasActive&&this.q().length&&CloudService.signedIn()) this.replay().then(()=>{ if(!this.q().length) toast("Offline changes synced.","ok"); });
     }
     this.badge();
   },

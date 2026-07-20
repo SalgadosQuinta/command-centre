@@ -481,8 +481,9 @@ function extractObj(src, name){
     TO.queue({owner_id:'me', assignee_id:'me', title:'offline capture', status:'open', category:null});
     assert(TO.q().length === 1, 'task queued');
     netDown = false;
-    await TO.replay();
-    assert(TO.q().length === 0 && posts === 1, 'queued task synced exactly once');
+    // Regression: three concurrent replay triggers must not duplicate the task
+    await Promise.all([TO.replay(), TO.replay(), TO.replay()]);
+    assert(TO.q().length === 0 && posts === 1, 'queued task synced exactly once even under concurrent replays (posts=' + posts + ')');
 
     const gtd3 = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
     assert(gtd3.includes('capturedCloudIds'), 'capture dedupe ledger present');

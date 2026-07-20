@@ -175,6 +175,11 @@ const TOffline={
   qSave(q){ try{ localStorage.setItem("ta-outbox:"+this.uid(),JSON.stringify(q)); }catch(e){} this.badge(); },
   queue(body){ const q=this.q(); q.push({body:body, ts:Date.now()}); this.qSave(q); },
   async replay(){
+    if(this._replaying) return 0;
+    this._replaying=true;
+    try{ return await this._replayInner(); } finally { this._replaying=false; }
+  },
+  async _replayInner(){
     let q=this.q();
     let synced=0;
     while(q.length){
@@ -192,6 +197,7 @@ const TOffline={
     return synced;
   },
   set(on,cachedAt){
+    const wasActive=this.active;
     this.active=on;
     let el=document.getElementById("offline-banner");
     if(on){
@@ -204,7 +210,7 @@ const TOffline={
       el.textContent="Offline \u2014 showing saved data"+(cachedAt?" from "+new Date(cachedAt).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}):"")+(n?" \u00b7 "+n+" task(s) waiting to sync":"");
     }else{
       if(el&&el.parentNode) el.parentNode.removeChild(el);
-      if(this.q().length&&Cloud.session){
+      if(wasActive&&this.q().length&&Cloud.session){
         this.replay().then(n=>{ if(n&&!this.q().length){ toast(n+" offline task"+(n===1?"":"s")+" synced"); if(typeof loadAll==="function") loadAll().catch(()=>{}); } });
       }
     }
