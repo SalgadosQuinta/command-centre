@@ -308,9 +308,10 @@ function extractObj(src, name){
   {
     const gtd = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
     assert(gtd.includes('id="mobMenu"') && gtd.includes('id="mobScrim"'), 'menu panel and scrim exist');
-    assert(gtd.includes('gtd_mobsec'), 'open section persisted');
-    assert(gtd.includes('data-msec') && gtd.includes('data-mviews'), 'accordion sections wired');
-    assert(gtd.includes('curGroup'), 'current view auto-opens its group');
+    assert(gtd.includes('mviews tiles'), 'More menu renders view tiles');
+    assert(gtd.includes('msec static'), 'section labels are static, no dropdown accordion');
+    assert(!gtd.includes('data-msec='), 'accordion toggles removed');
+    assert(gtd.includes('const cur=AppState.currentView') && gtd.includes('${v[0]===cur?"active":""}'), 'current view highlighted among tiles');
   }
 
 

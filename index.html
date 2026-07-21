@@ -281,11 +281,10 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
 #mobMenu.open{display:block}
 #mobMenu .msec{width:100%;display:flex;justify-content:space-between;align-items:center;background:none;border:0;color:var(--faint);font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;padding:11px 4px 7px;cursor:pointer}
 #mobMenu .msec .chev{transition:transform .15s;font-size:9px}
-#mobMenu .msec.closed .chev{transform:rotate(-90deg)}
-#mobMenu .mviews{display:flex;flex-direction:column;gap:2px}
-#mobMenu .mviews.hidden{display:none}
-#mobMenu .mrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;border-radius:8px;color:var(--text);font-size:14px;padding:11px 8px;cursor:pointer;text-decoration:none}
-#mobMenu .mrow:active,#mobMenu .mrow.active{background:var(--panel2);color:var(--accent)}
+#mobMenu .msec.static{cursor:default}
+#mobMenu .mviews.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:2px 0 6px}
+#mobMenu .mrow{display:flex;align-items:center;justify-content:center;text-align:center;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px;padding:14px 6px;cursor:pointer;text-decoration:none;min-height:52px}
+#mobMenu .mrow:active,#mobMenu .mrow.active{border-color:var(--accent);color:var(--accent)}
 #mobMenu .mquick{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 0 2px}
 #mobScrim{display:none;position:fixed;inset:0;z-index:59;background:rgba(0,0,0,.4)}
 #mobScrim.open{display:block}
@@ -1957,7 +1956,7 @@ async function openLedgerModal(){
       </div>
       <h2 style="margin-top:6px"><span class="eyebrow">Recent entries</span></h2>
       <div style="max-height:200px;overflow:auto">${rows.length?`<table class="plain"><tbody>
-        ${rows.slice(0,30).map(r=>`<tr><td class="mono" style="font-size:11px;white-space:nowrap">${esc(fmtDate(r.created_at.slice(0,10)))}</td><td style="font-size:12px">${esc((r.person&&(r.person.display_name||r.person.email))||"")}</td><td style="font-size:12px">${r.type==="float"?"Float":"Spend"}${r.description?" — "+esc(r.description):""}${r.receipt_path?` <a href="#" data-receipt="${esc(r.receipt_path)}" style="color:var(--accent)">receipt</a>`:""}${r.correction_of?` <span class="mono" style="font-size:9.5px;color:var(--faint)">CORRECTION</span>`:` <a href="#" data-correct="${esc(r.id)}" style="color:var(--faint);font-size:10.5px" title="Add a counter-entry that reverses this">correct</a>`}</td><td class="mono" style="text-align:right;font-size:12px;color:${r.type==="spend"?"var(--danger)":"var(--muted)"}">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</td></tr>`).join("")}
+        ${rows.slice(0,30).map(r=>`<tr><td class="mono" style="font-size:11px;white-space:nowrap">${esc(fmtDate(r.created_at.slice(0,10)))}</td><td style="font-size:12px">${esc((r.person&&(r.person.display_name||r.person.email))||"")}</td><td style="font-size:12px">${r.type==="float"?"Float":"Spend"}${r.description?" — "+esc(r.description):""}${r.receipt_path?` <a href="#" data-receipt="${esc(r.receipt_path)}" style="color:var(--accent)">receipt</a>`:""}${r.correction_of?` <span class="mono" style="font-size:9.5px;color:var(--faint)">CORRECTION</span>`:` <a href="#" data-correct="${esc(r.id)}" style="color:var(--faint);font-size:10.5px" title="Add a counter-entry that reverses this">correct</a>`}</td><td class="mono" style="text-align:right;font-size:12px;color:${r.type==="spend"?"var(--danger)":"var(--ok)"}">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</td></tr>`).join("")}
       </tbody></table>`:""}</div>
       <div class="modalfoot"><button class="btn" id="flClose">Close</button><button class="btn primary" id="flGive" ${others.length?"":"disabled"}>Record float</button></div>
     </div></div>`;
@@ -2287,7 +2286,7 @@ async function fillPeople(){
         <h2><span class="eyebrow">Money with ${esc(sel.display_name||sel.email)}</span></h2>
         ${Object.keys(bal).length?Object.keys(bal).map(c=>{const v=bal[c];
           return `<div style="margin-bottom:10px">
-            <div style="font-size:24px;font-weight:650;font-family:var(--mono);color:${v<0?"var(--danger)":"var(--text)"}">${esc(c)} ${fmt(v)}</div>
+            <div style="font-size:24px;font-weight:650;font-family:var(--mono);color:${v<0?"var(--danger)":v>0?"var(--ok)":"var(--text)"}">${esc(c)} ${fmt(v)}</div>
             <div class="sub">${v<0?"You owe them — they've spent beyond the float.":v>0?"Float they currently hold.":"All square."}</div>
             <div class="mono" style="font-size:11px;color:var(--faint);margin-top:4px">Given ${esc(c)} ${fmt(floats[c]||0)} · spent ${esc(c)} ${fmt(spends[c]||0)}</div>
           </div>`;}).join("")
@@ -2296,7 +2295,7 @@ async function fillPeople(){
         ${rows.length?`<div class="grouphead" style="margin-top:12px"><span class="eyebrow">Recent entries</span></div>
         ${rows.slice(0,8).map(r=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px">
           <span>${r.type==="float"?"Float":"Spend"}${r.description?" — "+esc(r.description):""}${r.receipt_path?` <a href="#" data-receipt="${esc(r.receipt_path)}" style="color:var(--accent)">receipt</a>`:""}</span>
-          <span class="mono" style="font-size:11.5px;color:${r.type==="spend"?"var(--danger)":"var(--muted)"};white-space:nowrap">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</span></div>`).join("")}`:""}
+          <span class="mono" style="font-size:11.5px;color:${r.type==="spend"?"var(--danger)":"var(--ok)"};white-space:nowrap">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</span></div>`).join("")}`:""}
       </div>
       <div class="card">
         <h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="eyebrow">Tasks with ${esc(sel.display_name||sel.email)}</span><span style="display:flex;gap:6px"><span class="btn sm" id="pplWa" style="cursor:default;opacity:.85" title="WhatsApp alerts are managed in Julius Family Money → Admin → WhatsApp notifications">WhatsApp: managed in Admin</span><button class="btn sm primary" id="pplAddTask">+ Add task</button></span></h2>
@@ -3695,9 +3694,6 @@ document.addEventListener("DOMContentLoaded", async ()=>{
       ["System",[["settings","Data & settings"]]]
     ];
     const cur=AppState.currentView;
-    let openSec=localStorage.getItem("gtd_mobsec")||"";
-    const curGroup=groups.find(([,vs])=>vs.some(v=>v[0]===cur));
-    if(curGroup) openSec=curGroup[0];
     menu.style.top=($("#mobilenav").getBoundingClientRect().bottom||96)+"px";
     menu.innerHTML=`
       <div class="mquick">
@@ -3705,9 +3701,8 @@ document.addEventListener("DOMContentLoaded", async ()=>{
         <button class="btn" data-msmart style="padding:12px 8px">✨ Smart capture</button>
       </div>`+
       groups.map(([name,views])=>{
-        const openNow=name===openSec;
-        return `<button class="msec ${openNow?"":"closed"}" data-msec="${name}">${name}<span class="chev">▾</span></button>
-        <div class="mviews ${openNow?"":"hidden"}" data-mviews="${name}">
+        return `<div class="msec static">${name}</div>
+        <div class="mviews tiles" data-mviews="${name}">
           ${views.map(v=>`<button class="mrow ${v[0]===cur?"active":""}" data-mnav="${v[0]}">${v[1]}</button>`).join("")}
           ${name==="Money"?`<a class="mrow" href="https://money.forgiatus.com/" target="_blank" rel="noopener">Family Money ↗</a>`:""}
         </div>`;
@@ -3715,13 +3710,6 @@ document.addEventListener("DOMContentLoaded", async ()=>{
     menu.classList.add("open"); scrim.classList.add("open");
     const close=()=>{ menu.classList.remove("open"); scrim.classList.remove("open"); };
     scrim.onclick=close;
-    menu.querySelectorAll("[data-msec]").forEach(b=>b.onclick=()=>{
-      const name=b.dataset.msec, vs=menu.querySelector(`[data-mviews="${name}"]`);
-      const opening=vs.classList.contains("hidden");
-      menu.querySelectorAll(".mviews").forEach(x=>x.classList.add("hidden"));
-      menu.querySelectorAll(".msec").forEach(x=>x.classList.add("closed"));
-      if(opening){ vs.classList.remove("hidden"); b.classList.remove("closed"); localStorage.setItem("gtd_mobsec",name); }
-    });
     menu.querySelectorAll("[data-mnav]").forEach(x=>x.onclick=()=>{ close(); go(x.dataset.mnav); });
     const qc=menu.querySelector("[data-mcapture]"); if(qc) qc.onclick=()=>{ close(); UI.captureModal(); };
     const qs=menu.querySelector("[data-msmart]"); if(qs) qs.onclick=()=>{ close(); openSmartCapture(); };

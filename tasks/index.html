@@ -60,11 +60,11 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
 .tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
 .tabs .n{display:block;font-size:14px;margin-bottom:1px}
 .bal{font-size:25px;font-weight:650;font-family:var(--mono);margin-top:4px}
-.bal.neg{color:var(--danger)}
+.bal.neg{color:var(--danger)}.bal.pos{color:var(--ok,#3fb27f)}
 .tx{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
 .tx:last-child{border-bottom:none}
 .tx .amt{font-family:var(--mono);white-space:nowrap}
-.tx .amt.spend{color:var(--danger)}
+.tx .amt.spend{color:var(--danger)}.amt.recv{color:var(--ok,#3fb27f)}
 .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--accent);border-radius:8px;padding:9px 16px;font-size:13px;z-index:20;max-width:90vw}
 .hidden{display:none!important}
 a{color:var(--accent)}
@@ -573,7 +573,7 @@ function moneyHTML(){
   <div class="card">
     <div class="eyebrow">Balance you hold</div>
     ${Object.keys(bal).length?Object.keys(bal).map(c=>{const v=Math.round(bal[c]*100)/100;
-      return `<div class="bal ${v<0?"neg":""}">${esc(c)} ${(v<0?"−":"")+Math.abs(v).toFixed(2)}</div>
+      return `<div class="bal ${v<0?"neg":v>0?"pos":""}">${esc(c)} ${(v<0?"−":"")+Math.abs(v).toFixed(2)}</div>
       <div class="sub">${v<0?"Spent more than received — this amount is owed to you.":v>0?"Money received that is not yet spent.":"All square."}</div>`;}).join("")
     :`<div class="sub" style="margin-top:6px">No money entries yet. When someone gives you a float it will show here.</div>`}
   </div>
@@ -595,7 +595,7 @@ function moneyHTML(){
     ${TX.length?TX.map(r=>`<div class="tx">
       <div><div>${r.type==="float"?"Received from "+esc(r.owner?.display_name||r.owner?.email||""):"Spent"}${r.description?" — "+esc(r.description):""}</div>
       <div class="meta">${esc(fmtD(r.created_at))}${r.receipt_path?` · <a href="#" data-receipt="${esc(r.receipt_path)}">receipt</a>`:""}</div></div>
-      <div class="amt ${r.type==="spend"?"spend":""}">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</div>
+      <div class="amt ${r.type==="spend"?"spend":"recv"}">${r.type==="spend"?"−":"+"}${esc(r.currency)} ${parseFloat(r.amount).toFixed(2)}</div>
     </div>`).join(""):`<div class="empty">No entries yet.</div>`}
   </div>`;
 }
