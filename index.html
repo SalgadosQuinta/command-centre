@@ -286,6 +286,12 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
 #mobMenu .mrow{display:flex;align-items:center;justify-content:center;text-align:center;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px;padding:14px 6px;cursor:pointer;text-decoration:none;min-height:52px}
 #mobMenu .mrow:active,#mobMenu .mrow.active{border-color:var(--accent);color:var(--accent)}
 #mobMenu .mquick{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 0 2px}
+.msep{display:flex;align-items:center;gap:9px;margin:14px 0 2px;font-weight:650;font-size:13.5px;color:var(--text)}
+.msep::before{content:'';width:4px;height:16px;background:var(--accent);border-radius:2px}
+.msep::after{content:'';flex:1;height:1px;background:var(--line)}
+.wksep{display:flex;align-items:center;gap:7px;margin:6px 0 0;font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.wksep::before{content:'';width:14px;height:3px;background:var(--line);border-radius:2px}
+.wksep::after{content:'';flex:1;height:1px;background:var(--line);opacity:.5}
 #mobScrim{display:none;position:fixed;inset:0;z-index:59;background:rgba(0,0,0,.4)}
 #mobScrim.open{display:block}
 </style>
@@ -2773,6 +2779,21 @@ async function fillMoneySummary(){
     }
   }
 }
+function timelineMarked(rows, dateFn, rowFn){
+  // Brass month band + week tick separators; rows sorted by dateFn ascending.
+  const wkOf=d=>{ const x=new Date(d+"T12:00:00"); x.setDate(x.getDate()+((5-x.getDay()+7)%7)); return x.toISOString().slice(0,10); };
+  let html="", lastMo=null, lastWk=null;
+  rows.forEach(r=>{
+    const d=dateFn(r);
+    if(d){
+      const mo=d.slice(0,7), wk=wkOf(d);
+      if(mo!==lastMo){ html+=`<div class="msep"><span>${esc(new Date(d+"T12:00:00").toLocaleDateString("en-GB",{month:"long",year:"numeric"}))}</span></div>`; lastMo=mo; lastWk=null; }
+      if(wk!==lastWk){ html+=`<div class="wksep"><span>wk ending ${esc(fmtDate(wk))}</span></div>`; lastWk=wk; }
+    }
+    html+=rowFn(r);
+  });
+  return html;
+}
 UI.finance = function(){
   if(financeLocked()) return financeLockHTML();
   const f=FinanceService.data();
@@ -2797,7 +2818,7 @@ UI.finance = function(){
     <div class="card">
       <h2 style="display:flex;justify-content:space-between;align-items:baseline"><span class="eyebrow">Revenue pipeline</span>
         <span class="mono" style="font-size:10.5px;color:var(--faint)">${Object.keys(pipe).length?"unconfirmed proposals: "+Object.keys(pipe).map(c=>money(c,pipe[c])).join(" · ")+" (not counted above)":"all entries confirmed"}</span></h2>
-      ${income.length?income.map(x=>`
+      ${(()=>{ const incRow=x=>`
         <div style="padding:9px 0;border-bottom:1px solid var(--line);${x.status==="received"?"opacity:.55":""}">
           <div style="display:flex;justify-content:space-between;gap:8px">
             <div><b style="font-size:13.5px">${esc(x.name||"Unnamed")}</b>${x.client?` <span class="mono" style="font-size:10.5px;color:var(--faint)">· ${esc(x.client)}</span>`:""} ${recBadge(x.recurring)}</div>
@@ -2812,12 +2833,14 @@ UI.finance = function(){
             <button class="btn sm ghost" data-editinc="${esc(x.id)}">Edit</button>
             <button class="btn sm ghost" data-delinc="${esc(x.id)}" style="color:var(--danger)">Delete</button></div>`
           :`<div class="row" style="margin-top:6px"><button class="btn sm ghost" data-delinc="${esc(x.id)}" style="color:var(--danger)">Delete</button></div>`}
-        </div>`).join("")
-      :`<div class="empty">No expected revenue yet. Add what you're aiming to bring in — each entry is a target to drive towards.</div>`}
+        </div>`;
+        const pending=income.filter(x=>x.status!=="received"), got=income.filter(x=>x.status==="received");
+        return income.length ? timelineMarked(pending, x=>x.expectedDate, incRow) + (got.length?`<div class="msep"><span>Received</span></div>`+got.map(incRow).join(""):"")
+        :`<div class="empty">No expected revenue yet. Add what you're aiming to bring in — each entry is a target to drive towards.</div>`; })()}
     </div>
     <div class="card">
       <h2><span class="eyebrow">Payments to make</span></h2>
-      ${outs.length?outs.map(x=>`
+      ${(()=>{ const outRow=x=>`
         <div style="padding:9px 0;border-bottom:1px solid var(--line)">
           <div style="display:flex;justify-content:space-between;gap:8px">
             <div><b style="font-size:13.5px">${esc(x.name||"Unnamed")}</b>${x.category?` <span class="mono" style="font-size:10.5px;color:var(--faint)">· ${esc(x.category)}</span>`:""} ${recBadge(x.recurring)}</div>
@@ -2828,8 +2851,9 @@ UI.finance = function(){
             <button class="btn sm" data-paid="${esc(x.id)}">Mark paid</button>
             <button class="btn sm ghost" data-editout="${esc(x.id)}">Edit</button>
             <button class="btn sm ghost" data-delout="${esc(x.id)}" style="color:var(--danger)">Delete</button></div>
-        </div>`).join("")
-      :`<div class="empty">Nothing due. Add bills, subscriptions and commitments so nothing catches you out.</div>`}
+        </div>`;
+        return outs.length ? timelineMarked(outs, x=>x.dueDate, outRow)
+        :`<div class="empty">Nothing due. Add bills, subscriptions and commitments so nothing catches you out.</div>`; })()}
       ${paidOuts.length?`<div class="grouphead"><span class="eyebrow">Settled one-offs</span></div>
         <div style="opacity:.6">${paidOuts.slice(0,5).map(x=>`<div style="padding:5px 0;font-size:12px;color:var(--faint)">✓ ${esc(x.name)} — ${money(x.currency,parseFloat(x.amount||0))}</div>`).join("")}</div>`:""}
     </div>

@@ -492,6 +492,14 @@ function extractObj(src, name){
     assert(gtd3.includes('source:"tasksapp"'), 'captured tasks carry provenance and cloud link');
   }
 
+  console.log('--- Pipeline timeline demarcation ---');
+  {
+    const gtdT = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    assert(gtdT.includes('function timelineMarked'), 'console has timeline marker helper');
+    assert(gtdT.includes('timelineMarked(pending, x=>x.expectedDate, incRow)'), 'revenue list marked by month/week');
+    assert(gtdT.includes('timelineMarked(outs, x=>x.dueDate, outRow)'), 'payments list marked by month/week');
+    assert(gtdT.includes('.msep::before') && gtdT.includes('.wksep::before'), 'visual month bar and week tick styles present');
+  }
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
