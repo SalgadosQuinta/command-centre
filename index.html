@@ -970,7 +970,7 @@ function taskRowHTML(t, opts={}){
   if(t.context) meta.push(`<span class="m ctx">${esc(t.context)}</span>`);
   if(t.projectId && !opts.hideProject) meta.push(`<span class="m">▸ ${esc(projName(t.projectId))}</span>`);
   if(dueTxt) meta.push(`<span class="m ${dueCls}">${esc(dueTxt)}</span>`);
-  if(t.scheduledDate) meta.push(`<span class="m">⧖ ${esc(fmtDate(t.scheduledDate))}</span>`);
+  if(t.scheduledDate) meta.push(`<span class="m">⧖ ${esc(fmtDate(t.scheduledDate))}${t.scheduledTime?" "+esc(t.scheduledTime):""}</span>`);
   if(t.estimatedMinutes) meta.push(`<span class="m">${t.estimatedMinutes}m</span>`);
   if(t.energy&&t.energy!=="medium") meta.push(`<span class="m">${esc(t.energy)} energy</span>`);
   if(t.waitingFor?.person) meta.push(`<span class="m" style="color:var(--wait)">⏲ ${esc(t.waitingFor.person)}</span>`);
@@ -2779,6 +2779,19 @@ async function fillMoneySummary(){
     }
   }
 }
+function outlookComposeURL(t){
+  // Deep link into Outlook (rodney@mullway.com signed in) with the event prefilled.
+  const date=t.scheduledDate||t.dueDate||todayStr();
+  const time=t.scheduledTime||"09:00";
+  const start=new Date(date+"T"+time+":00");
+  const mins=Number(t.estimatedMinutes)||30;
+  const end=new Date(start.getTime()+mins*60000);
+  const iso=d=>d.toISOString().slice(0,19);
+  const q=new URLSearchParams({path:"/calendar/action/compose",rru:"addevent",
+    subject:t.title, body:(t.notes||"")+"\n\n(from GTD console)",
+    startdt:iso(start), enddt:iso(end)});
+  return "https://outlook.office.com/calendar/0/deeplink/compose?"+q.toString();
+}
 function timelineMarked(rows, dateFn, rowFn){
   // Brass month band + week tick separators; rows sorted by dateFn ascending.
   const wkOf=d=>{ const x=new Date(d+"T12:00:00"); x.setDate(x.getDate()+((5-x.getDay()+7)%7)); return x.toISOString().slice(0,10); };
@@ -3184,7 +3197,9 @@ UI.taskDrawer = function(id){
     <div class="fieldrow">
       <div class="field"><label>Due date</label><input id="tdDue" type="date" value="${esc(t.dueDate||"")}"></div>
       <div class="field"><label>Scheduled date</label><input id="tdSched" type="date" value="${esc(t.scheduledDate||"")}"></div>
+      <div class="field"><label>Time</label><input id="tdSchedTime" type="time" value="${esc(t.scheduledTime||"")}"></div>
     </div>
+    ${t.scheduledDate?`<div style="margin:2px 0 6px"><button class="btn sm" id="tdOutlook">Add to Outlook calendar (rodney@mullway.com)</button></div>`:""}
     <div class="grouphead"><span class="eyebrow">Waiting for</span></div>
     <div class="fieldrow">
       <div class="field"><label>Person</label><input id="tdWPerson" value="${esc(w.person||"")}"></div>
@@ -3216,7 +3231,7 @@ UI.taskDrawer = function(id){
       priority:$("#tdPrio").value, energy:$("#tdEnergy").value,
       estimatedMinutes:$("#tdEst").value?parseInt($("#tdEst").value,10):null,
       tags:$("#tdTags").value.split(",").map(s=>s.trim()).filter(Boolean),
-      dueDate:$("#tdDue").value||null, scheduledDate:$("#tdSched").value||null,
+      dueDate:$("#tdDue").value||null, scheduledDate:$("#tdSched").value||null, scheduledTime:$("#tdSchedTime")&&$("#tdSchedTime").value||null,
       notes:$("#tdNotes").value, clarified:$("#tdStatus").value!=="inbox",
       waitingFor: hasW? (wf.delegatedDate?wf:Object.assign(wf,{delegatedDate:todayStr()})) : null
     });
@@ -3533,7 +3548,11 @@ function bindView(){
         TaskService.update(t.id,Object.assign(base,{status:"waiting"})); render(); UI.taskDrawer(t.id); return;
       }
       else if(act==="defer"){ TaskService.update(t.id,Object.assign(base,{status:"next",context:base.context||AppState.data.settings.defaultContext})); toast("Moved to Next actions","ok"); }
-      else if(act==="schedule"){ TaskService.update(t.id,Object.assign(base,{status:"scheduled"})); render(); UI.taskDrawer(t.id); return; }
+      else if(act==="schedule"){
+        TaskService.update(t.id,Object.assign(base,{status:"scheduled"}));
+        toast("Scheduled — set the date and time, then use Add to Outlook to put it on your calendar","ok");
+        render(); UI.taskDrawer(t.id); return;
+      }
       else if(act==="project"){
         const p=ProjectService.create({name:base.title,desiredOutcome:base.title,notes:base.notes});
         TaskService.remove(t.id); AppState.currentProjectId=p.id; go("project"); toast("Project created — define its first next action","ok"); return;
@@ -3542,6 +3561,9 @@ function bindView(){
     }));
   }
   if(v==="next"){
+    const tOl=$("#tdOutlook"); if(tOl) tOl.onclick=()=>{ const t=TaskService.get(AppState.selectedTaskId); if(!t) return;
+      const live=Object.assign({},t,{title:$("#tdTitle")?$("#tdTitle").value||t.title:t.title, scheduledDate:$("#tdSched").value||t.scheduledDate, scheduledTime:$("#tdSchedTime").value||t.scheduledTime});
+      window.open(outlookComposeURL(live),"_blank"); };
     const g=$("#groupSel"); if(g) g.onchange=()=>{AppState.filters.group=g.value; render();};
     $$("#view [data-nextrange]").forEach(b=>b.onclick=()=>{AppState.nextRange=b.dataset.nextrange; render();});
     const nb=$("#newNextBtn"); if(nb) nb.onclick=()=>UI.captureModal({status:"next",clarified:true,context:AppState.data.settings.defaultContext});

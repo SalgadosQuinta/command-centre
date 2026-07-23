@@ -500,6 +500,24 @@ function extractObj(src, name){
     assert(gtdT.includes('timelineMarked(outs, x=>x.dueDate, outRow)'), 'payments list marked by month/week');
     assert(gtdT.includes('.msep::before') && gtdT.includes('.wksep::before'), 'visual month bar and week tick styles present');
   }
+  console.log('--- Scheduled time + Outlook ---');
+  {
+    const gtdO = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    assert(gtdO.includes('id="tdSchedTime"') && gtdO.includes('scheduledTime:$("#tdSchedTime")'), 'time field present and saved');
+    assert(gtdO.includes('function outlookComposeURL'), 'Outlook compose helper present');
+    assert(gtdO.includes('outlook.office.com/calendar/0/deeplink/compose'), 'deep link targets Outlook compose');
+    assert(gtdO.includes('id="tdOutlook"'), 'Add to Outlook button on scheduled tasks');
+    assert(gtdO.includes('${t.scheduledTime?" "+esc(t.scheduledTime):""}'), 'time shown alongside scheduled date');
+    // helper behaviour
+    const vm = require('vm');
+    const m = gtdO.match(/function outlookComposeURL[\s\S]*?\n\}/)[0];
+    const ctx = vm.createContext({todayStr:()=> '2026-07-22', URLSearchParams});
+    vm.runInContext(m, ctx);
+    const url = vm.runInContext('outlookComposeURL({title:"CE+ call", notes:"prep", scheduledDate:"2026-07-30", scheduledTime:"14:30", estimatedMinutes:45})', ctx);
+    assert(url.includes('subject=CE%2B+call') || url.includes('subject=CE'), 'subject carried');
+    assert(url.includes('2026-07-30T14%3A30%3A00') || url.includes(encodeURIComponent('2026-07-30T14:30:00')), 'start uses scheduled date and time');
+    assert(url.includes('15%3A15%3A00'), 'end = start + estimated minutes');
+  }
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
