@@ -500,6 +500,32 @@ function extractObj(src, name){
     assert(gtdT.includes('timelineMarked(outs, x=>x.dueDate, outRow)'), 'payments list marked by month/week');
     assert(gtdT.includes('.msep::before') && gtdT.includes('.wksep::before'), 'visual month bar and week tick styles present');
   }
+  console.log('--- Outlook button actually fires from the drawer ---');
+  {
+    const { JSDOM } = require('jsdom');
+    const gtdHtml = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    let opened = [];
+    const dom = new JSDOM(gtdHtml, {runScripts:'dangerously', url:'https://example.test/',
+      beforeParse(w){
+        w.open = (u)=>{ opened.push(String(u)); return {focus(){}}; };
+        w.fetch = ()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve('[]'),json:()=>Promise.resolve({})});
+      }});
+    await new Promise(r=>setTimeout(r,600));
+    const w = dom.window, d = w.document;
+    // seed task store with a scheduled task and open its drawer
+    w.eval('AppState').data = w.eval('demoData')();
+    const TS = w.eval('TaskService');
+    const task = TS.create({title:'CE+ call', status:'scheduled', scheduledDate:'2026-07-30', scheduledTime:'14:30', estimatedMinutes:45, notes:'prep'});
+    w.eval('UI').taskDrawer(task.id);
+    await new Promise(r=>setTimeout(r,150));
+    const btn = d.getElementById('tdOutlook');
+    assert(btn, 'Add to Outlook button rendered for the scheduled task');
+    btn.click();
+    await new Promise(r=>setTimeout(r,80));
+    assert(opened.length === 1 && opened[0].includes('outlook.office.com/calendar/0/deeplink/compose'), 'click opens the Outlook compose deep link');
+    assert(opened[0].includes(encodeURIComponent('2026-07-30T14:30:00')), 'link carries the scheduled date and time');
+  }
+
   console.log('--- Scheduled time + Outlook ---');
   {
     const gtdO = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');

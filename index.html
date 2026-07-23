@@ -3236,6 +3236,16 @@ UI.taskDrawer = function(id){
       waitingFor: hasW? (wf.delegatedDate?wf:Object.assign(wf,{delegatedDate:todayStr()})) : null
     });
   };
+  const tOl=$("#tdOutlook"); if(tOl) tOl.onclick=()=>{
+    const live=Object.assign({},t,{
+      title:$("#tdTitle").value||t.title,
+      notes:$("#tdNotes")?$("#tdNotes").value:t.notes,
+      scheduledDate:$("#tdSched").value||t.scheduledDate,
+      scheduledTime:$("#tdSchedTime").value||t.scheduledTime,
+      estimatedMinutes:$("#tdEst")&&$("#tdEst").value?Number($("#tdEst").value):t.estimatedMinutes
+    });
+    window.open(outlookComposeURL(live),"_blank");
+  };
   $("#tdSave").onclick=()=>{save(); closeModal(); render(); toast("Saved","ok");};
   const tdD=$("#tdDelegate"); if(tdD) tdD.onclick=()=>{ save(); openDelegateModal(id); };
   $("#tdComplete").onclick=()=>{save(); if(TaskService.get(id).status==="completed"){TaskService.update(id,{status:"next",completedAt:null});}else{TaskService.complete(id);} closeModal(); render();};
@@ -3561,9 +3571,6 @@ function bindView(){
     }));
   }
   if(v==="next"){
-    const tOl=$("#tdOutlook"); if(tOl) tOl.onclick=()=>{ const t=TaskService.get(AppState.selectedTaskId); if(!t) return;
-      const live=Object.assign({},t,{title:$("#tdTitle")?$("#tdTitle").value||t.title:t.title, scheduledDate:$("#tdSched").value||t.scheduledDate, scheduledTime:$("#tdSchedTime").value||t.scheduledTime});
-      window.open(outlookComposeURL(live),"_blank"); };
     const g=$("#groupSel"); if(g) g.onchange=()=>{AppState.filters.group=g.value; render();};
     $$("#view [data-nextrange]").forEach(b=>b.onclick=()=>{AppState.nextRange=b.dataset.nextrange; render();});
     const nb=$("#newNextBtn"); if(nb) nb.onclick=()=>UI.captureModal({status:"next",clarified:true,context:AppState.data.settings.defaultContext});
