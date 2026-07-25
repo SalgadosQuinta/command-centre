@@ -23,10 +23,10 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
   try {
-    const { text, images, rules, contexts, projects, areas, people, today, mode } =
+    const { text, images, documents, rules, contexts, projects, areas, people, today, mode } =
       await req.json();
 
-    if (!text && !(images && images.length)) {
+    if (!text && !(images && images.length) && !(documents && documents.length)) {
       return json({ error: "Nothing to analyse" }, 400);
     }
 
@@ -94,8 +94,14 @@ Respond ONLY with JSON, no markdown fences, exactly this shape:
         },
       });
     }
+    for (const doc of (documents || []).slice(0, 2)) {
+      content.push({
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: doc.data },
+      });
+    }
     if (text) content.push({ type: "text", text: String(text).slice(0, 24000) });
-    if (!text) content.push({ type: "text", text: mode === "finance" ? "Extract the money items from the attached document photo(s)." : "Extract the tasks from the attached screenshot(s)." });
+    if (!text) content.push({ type: "text", text: mode === "finance" ? "Extract the money items from the attached document(s)." : "Extract the tasks from the attached screenshot(s)." });
 
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
