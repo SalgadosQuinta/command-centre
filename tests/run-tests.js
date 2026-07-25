@@ -544,6 +544,15 @@ function extractObj(src, name){
     assert(url.includes('2026-07-30T14%3A30%3A00') || url.includes(encodeURIComponent('2026-07-30T14:30:00')), 'start uses scheduled date and time');
     assert(url.includes('15%3A15%3A00'), 'end = start + estimated minutes');
   }
+  console.log('--- Mobile photo capture ---');
+  {
+    const gtdP = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    assert(gtdP.includes('downscale and recompress'), 'large photos compressed, not rejected');
+    assert(gtdP.includes('toDataURL("image/jpeg",0.82)') && gtdP.includes('MAX=1568'), 'canvas downscale to 1568px JPEG');
+    assert(!gtdP.includes('is too large (max ~4.5 MB)'), 'hard 4.5MB rejection removed');
+    assert(gtdP.includes('id="cmPhoto"'), 'photo shortcut in quick capture');
+    assert(gtdP.includes('accept="image/*" multiple'), 'gallery/camera input retained');
+  }
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

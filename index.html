@@ -1693,13 +1693,34 @@ const SmartCapture = {
   }
 };
 function fileToImage(f){
+  // Phone gallery photos are routinely 3–10 MB: downscale and recompress
+  // client-side (max edge 1568px, JPEG) instead of rejecting them.
   return new Promise((res,rej)=>{
     if(!/^image\//.test(f.type)){ rej(new Error(f.name+" is not an image")); return; }
-    if(f.size>4.5*1024*1024){ rej(new Error(f.name+" is too large (max ~4.5 MB)")); return; }
-    const r=new FileReader();
-    r.onload=()=>res({media_type:f.type,data:String(r.result).split(",")[1]});
-    r.onerror=()=>rej(new Error("Could not read "+f.name));
-    r.readAsDataURL(f);
+    const readPlain=()=>{ const r=new FileReader();
+      r.onload=()=>res({media_type:f.type,data:String(r.result).split(",")[1]});
+      r.onerror=()=>rej(new Error("Could not read "+f.name));
+      r.readAsDataURL(f); };
+    if(f.size<=1.5*1024*1024){ readPlain(); return; }
+    const url=URL.createObjectURL(f);
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const MAX=1568;
+        let w=img.naturalWidth,h=img.naturalHeight;
+        const scale=Math.min(1, MAX/Math.max(w,h));
+        w=Math.round(w*scale); h=Math.round(h*scale);
+        const c=document.createElement("canvas"); c.width=w; c.height=h;
+        c.getContext("2d").drawImage(img,0,0,w,h);
+        URL.revokeObjectURL(url);
+        const dataUrl=c.toDataURL("image/jpeg",0.82);
+        const b64=dataUrl.split(",")[1];
+        if(b64.length*0.75>4.5*1024*1024){ rej(new Error(f.name+" is too large even after compression")); return; }
+        res({media_type:"image/jpeg",data:b64});
+      }catch(e){ URL.revokeObjectURL(url); readPlain(); }
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); rej(new Error("Could not read "+f.name)); };
+    img.src=url;
   });
 }
 function openSmartCapture(prefill){
@@ -1709,7 +1730,8 @@ function openSmartCapture(prefill){
     <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px">Paste an email, WhatsApp message or notes — or attach screenshots — and the tasks, dates and people will be extracted for your review.</p>
     <div class="field"><label>Pasted text</label><textarea id="scText" rows="7" placeholder="Paste the email or message here — or use the mic and just say it…"></textarea></div>
     <div style="margin:-4px 0 8px">${micBtnHTML("scMic")}</div>
-    <div class="field"><label>Screenshots (up to 4)</label><input id="scImgs" type="file" accept="image/*" multiple></div>
+    <div class="field"><label>Photos or screenshots (up to 4) — camera or gallery</label><input id="scImgs" type="file" accept="image/*" multiple></div>
+    <div id="scImgList" class="mono" style="font-size:11px;color:var(--muted);min-height:14px"></div>
     <div id="scStatus" class="mono" style="font-size:11.5px;color:var(--muted);min-height:16px"></div>
     <div id="scResults"></div>
     <div class="modalfoot">
@@ -1719,6 +1741,7 @@ function openSmartCapture(prefill){
   </div></div>`;
   $("#scCancel").onclick=closeModal;
   const sm=$("#scMic"); if(sm) sm.onclick=()=>voiceToggle(sm,$("#scText"));
+  $("#scImgs").onchange=()=>{ const fs=Array.from($("#scImgs").files||[]); $("#scImgList").textContent=fs.length?fs.map(f=>f.name+" ("+(f.size/1048576).toFixed(1)+" MB)").join(" · ")+(fs.some(f=>f.size>1.5*1048576)?" — large photos will be compressed automatically":""):""; };
   if(prefill&&prefill.trim()){ $("#scText").value=prefill; setTimeout(()=>$("#scGo").click(),50); }
   $("#scGo").onclick=async()=>{
     const text=$("#scText").value.trim();
@@ -3309,7 +3332,7 @@ UI.captureModal = function(preset){
     <h2>Capture</h2>
     <textarea id="cmText" placeholder="What has your attention? One item per line.&#10;Shorthand: Email Mark about ISO SOW @Email #ISO high" style="min-height:110px;font-size:14.5px" autofocus></textarea>
     <div class="modalfoot"><span class="eyebrow" style="margin-right:auto;align-self:center">Ctrl+Enter to capture</span>
-      ${micBtnHTML("cmMic")}<button class="btn" data-close="1">Cancel</button>${CloudService.signedIn()?`<button class="btn" id="cmSmart" title="Extract tasks, dates and people with AI first">✨ Analyse</button>`:""}<button class="btn primary" id="cmGo">Capture</button></div>
+      ${micBtnHTML("cmMic")}<button class="btn" data-close="1">Cancel</button>${CloudService.signedIn()?`<button class="btn" id="cmSmart" title="Extract tasks, dates and people with AI first">✨ Analyse</button><button class="btn" id="cmPhoto">📷 Photo → tasks</button>`:""}<button class="btn primary" id="cmGo">Capture</button></div>
   </div></div>`;
   if(preset&&preset.presetText){ $("#cmText").value=preset.presetText; const ta=$("#cmText"); ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length); }
   const doIt=()=>{
@@ -3322,6 +3345,7 @@ UI.captureModal = function(preset){
   $("#cmGo").onclick=doIt;
   const cm=$("#cmMic"); if(cm) cm.onclick=()=>voiceToggle(cm,$("#cmText"));
   const cs=$("#cmSmart"); if(cs) cs.onclick=()=>{ const v=$("#cmText").value; closeModal(); openSmartCapture(v); };
+  const cp=$("#cmPhoto"); if(cp) cp.onclick=()=>{ const v=$("#cmText").value; closeModal(); openSmartCapture(v); setTimeout(()=>{ const i=$("#scImgs"); if(i) i.click(); },120); };
   $("#cmText").addEventListener("keydown",e=>{ if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)) doIt(); });
   $("#cmText").focus();
 };
