@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
   try {
-    const { text, images, rules, contexts, projects, areas, people, today } =
+    const { text, images, rules, contexts, projects, areas, people, today, mode } =
       await req.json();
 
     if (!text && !(images && images.length)) {
@@ -38,7 +38,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    const system = `You are the smart-capture engine inside a personal GTD (Getting Things Done) task manager.
+    const financeSystem = `You read photographed or scanned financial documents — bills, invoices, receipts, bank statements, utility letters — plus any pasted text, for a family money manager.
+
+Today's date: ${today || new Date().toISOString().slice(0, 10)} (resolve relative dates with it).
+
+Extract every distinct money item you can actually see. Never invent amounts or dates.
+- finance_payments: money the user must PAY (bills, invoices, amounts due) — {"name","amount","currency","due_date","recurring":"none|weekly|monthly|quarterly|annually","category"}. Use the payee/service as name. due_date null if not stated.
+- finance_revenue: money the user will RECEIVE — {"name","client","amount","currency","expected_date","recurring"}.
+- expenses: money ALREADY SPENT (till receipts, paid stamps, card slips) — {"note","amount","currency","spent_at","category"}. Use the merchant as note; spent_at from the receipt date.
+- currency: ISO code from the symbol/context (£→GBP, $→USD, R→ZAR if South African context); default GBP.
+- A receipt is expenses, a bill not yet paid is finance_payments, a statement line can be either — direction decides.
+- summary: one sentence saying what the document is.
+
+Respond ONLY with JSON, no markdown fences:
+{"summary":"...","tasks":[],"finance_payments":[],"finance_revenue":[],"expenses":[]}`;
+
+    const system = mode === "finance" ? financeSystem : `You are the smart-capture engine inside a personal GTD (Getting Things Done) task manager.
 The user pastes raw material — emails, WhatsApp messages, meeting notes, or screenshots of any of these — and you extract actionable tasks.
 
 Today's date: ${today || new Date().toISOString().slice(0, 10)} (use it to resolve phrases like "by Friday", "end of month", "tomorrow").
@@ -80,7 +95,7 @@ Respond ONLY with JSON, no markdown fences, exactly this shape:
       });
     }
     if (text) content.push({ type: "text", text: String(text).slice(0, 24000) });
-    if (!text) content.push({ type: "text", text: "Extract the tasks from the attached screenshot(s)." });
+    if (!text) content.push({ type: "text", text: mode === "finance" ? "Extract the money items from the attached document photo(s)." : "Extract the tasks from the attached screenshot(s)." });
 
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
