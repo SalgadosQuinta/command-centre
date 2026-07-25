@@ -578,6 +578,25 @@ function extractObj(src, name){
     assert(iC===-1||iN===-1||iC<iN, 'priority groups ordered Critical→Low');
     assert(byPri.indexOf('Overdue')===-1||byPri.indexOf('Overdue')<Math.max(iC,iN), 'Overdue stays pinned on top in every grouping');
     w.eval('AppState').allGroup='status';
+    // Overdue prominence: create an overdue task, check it's flagged in every surface
+    const ov = w.eval('TaskService').create({title:'Signing form for Trace', status:'next', dueDate:'2026-07-01', context:'@Home'});
+    w.eval('go')('next');
+    await new Promise(r=>setTimeout(r,150));
+    let vhtml = w.document.getElementById('view').innerHTML;
+    assert(vhtml.includes('OVERDUE') && vhtml.includes('Signing form for Trace'), 'overdue badge on the row in Next actions');
+    assert(vhtml.includes('overdue-row'), 'overdue row visually highlighted');
+    assert(/\d+d overdue — was due/.test(vhtml), 'overdue rows say how late and the original date');
+    w.eval('go')('all');
+    await new Promise(r=>setTimeout(r,150));
+    vhtml = w.document.getElementById('view').innerHTML;
+    assert(vhtml.includes('OVERDUE') && vhtml.includes('overdue-row'), 'same treatment in All outstanding');
+    w.eval('go')('focus');
+    await new Promise(r=>setTimeout(r,200));
+    vhtml = w.document.getElementById('view').innerHTML;
+    assert(vhtml.includes('Overdue — needs a decision') && vhtml.includes('Signing form for Trace'), 'Focus pins a red overdue section');
+    const badge = w.document.getElementById('cntOverdue');
+    assert(badge && badge.classList.contains('overdue') && Number(badge.textContent) >= 1, 'red overdue count on the All outstanding nav button');
+    w.eval('TaskService').remove(ov.id);
     // Click-through in the rendered app: navigating to the view and clicking Area must re-render grouped
     const dApp = w.document;
     w.eval('go')('all');
