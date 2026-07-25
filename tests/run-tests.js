@@ -553,6 +553,23 @@ function extractObj(src, name){
     assert(gtdP.includes('id="cmPhoto"'), 'photo shortcut in quick capture');
     assert(gtdP.includes('accept="image/*" multiple'), 'gallery/camera input retained');
   }
+  console.log('--- All outstanding view ---');
+  {
+    const { JSDOM } = require('jsdom');
+    const gtdHtml = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    const dom = new JSDOM(gtdHtml, {runScripts:'dangerously', url:'https://example.test/',
+      beforeParse(w){ w.fetch=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve('[]'),json:()=>Promise.resolve({})}); }});
+    await new Promise(r=>setTimeout(r,600));
+    const w=dom.window;
+    w.eval('AppState').data = w.eval('demoData')();
+    const html2 = w.eval('UI').all();
+    assert(html2.includes('All outstanding'), 'view renders with its title');
+    assert(html2.indexOf('Overdue') < html2.indexOf('Next actions') || !html2.includes('Overdue'), 'overdue section leads when present');
+    assert(html2.includes('Inbox — unprocessed') || html2.includes('Next actions'), 'status sections present');
+    assert(html2.includes('Someday/Maybe excluded'), 'someday parked, stated honestly');
+    const gtdA = gtdHtml;
+    assert(gtdA.includes('data-view="all"') && gtdA.includes('["all","All outstanding"]'), 'view reachable from sidebar and More tiles');
+  }
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

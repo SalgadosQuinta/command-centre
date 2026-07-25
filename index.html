@@ -337,6 +337,7 @@ table.plain td{padding:8px;border-bottom:1px solid var(--line)}
     <button class="btn primary" id="captureBtn" style="margin:2px 6px 10px;justify-content:center">+ Capture <span class="kbd" style="border-color:rgba(0,0,0,.25);color:inherit">C</span></button>
     <div class="navsec eyebrow">Engage</div>
     <button class="navbtn" title="Start here: your best next actions, chosen for you" data-view="focus"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>Focus</button>
+    <button class="navbtn" title="Every open item in one list — overdue first" data-view="all"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="19" cy="18" r="2"/></svg>All outstanding</button>
     <button class="navbtn" title="Hard landscape — only date-fixed items live here" data-view="calendar"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</button>
     <div class="navsec eyebrow">Process</div>
     <button class="navbtn" title="Capture everything that has your attention, decide later" data-view="inbox"><svg viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l2 3h4l2-3h5"/></svg>Inbox<span class="cnt" id="cntInbox"></span></button>
@@ -957,7 +958,7 @@ const SearchService = {
    UI RENDERING
    ============================================================ */
 const STATUS_LABEL = {inbox:"Inbox",next:"Next action",scheduled:"Scheduled",waiting:"Waiting for",someday:"Someday / Maybe",reference:"Reference",completed:"Completed",cancelled:"Cancelled"};
-const VIEW_TITLES = {focus:"Focus",inbox:"Inbox",clarify:"Clarify",next:"Next actions",projects:"Projects",waiting:"Waiting for",calendar:"Calendar",someday:"Someday / Maybe",reference:"Reference",review:"Review",settings:"Data & settings",search:"Search results",project:"Project"};
+const VIEW_TITLES = {focus:"Focus",all:"All outstanding",inbox:"Inbox",clarify:"Clarify",next:"Next actions",projects:"Projects",waiting:"Waiting for",calendar:"Calendar",someday:"Someday / Maybe",reference:"Reference",review:"Review",settings:"Data & settings",search:"Search results",project:"Project"};
 
 function areaName(id){ return AppState.data.areas.find(a=>a.id===id)?.name||""; }
 function projName(id){ return ProjectService.get(id)?.name||""; }
@@ -1035,6 +1036,29 @@ function focusFinanceHTML(){
         ${!overdueOut.length&&!lateIn.length?`<div class="mono" style="font-size:12px;color:var(--ok)">all on schedule</div>`:""}
       </div></div></div>`;
 }
+UI.all = function(){
+  const open=TaskService.all().filter(t=>!["completed","cancelled"].includes(t.status));
+  const tStr=todayStr();
+  const secs=[
+    ["Overdue", open.filter(t=>t.dueDate&&t.dueDate<tStr), "var(--danger)"],
+    ["Inbox — unprocessed", open.filter(t=>t.status==="inbox"&&!(t.dueDate&&t.dueDate<tStr)), null],
+    ["Next actions", open.filter(t=>t.status==="next"&&!(t.dueDate&&t.dueDate<tStr)), null],
+    ["Scheduled", open.filter(t=>t.status==="scheduled"&&!(t.dueDate&&t.dueDate<tStr)), null],
+    ["Waiting for", open.filter(t=>t.status==="waiting"&&!(t.dueDate&&t.dueDate<tStr)), null]
+  ];
+  const cloudOpen=(CloudService.signedIn()?TaskService.delegatedByMe():[]).filter(t=>t.cloud&&!["done","declined"].includes(t.cloud.status));
+  const someday=open.filter(t=>t.status==="someday");
+  const total=secs.reduce((a,[,l])=>a+l.length,0)+cloudOpen.length;
+  return `
+  <div class="viewhead"><div><h1>All outstanding</h1><div class="sub">${total} open item${total===1?"":"s"} across everything — Someday/Maybe excluded (${someday.length} parked)</div></div></div>
+  ${secs.map(([name,list,col])=>list.length?`
+    <div class="grouphead"><span class="eyebrow" ${col?`style="color:${col}"`:""}>${esc(name)}</span><span class="mono" style="font-size:10px;color:var(--faint)">${list.length}</span></div>
+    <div class="card" style="padding:6px 10px">${listHTML(list.slice().sort((a,b)=>String(a.dueDate||a.scheduledDate||"9999").localeCompare(String(b.dueDate||b.scheduledDate||"9999"))))}</div>`:"").join("")}
+  ${cloudOpen.length?`
+    <div class="grouphead"><span class="eyebrow">Delegated — still open</span><span class="mono" style="font-size:10px;color:var(--faint)">${cloudOpen.length}</span></div>
+    <div class="card" style="padding:6px 10px">${listHTML(cloudOpen)}</div>`:""}
+  ${total===0?`<div class="card"><div class="empty"><div class="big">Nothing outstanding</div>Everything is done, delegated and closed — enjoy it.</div></div>`:""}`;
+};
 UI.focus = function(){
   const h=GTDService.health();
   const f=AppState.filters;
@@ -3760,7 +3784,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
     const menu=$("#mobMenu"), scrim=$("#mobScrim");
     if(menu.classList.contains("open")){ menu.classList.remove("open"); scrim.classList.remove("open"); return; }
     const groups=[
-      ["Engage",[["focus","Focus"],["calendar","Calendar"]]],
+      ["Engage",[["focus","Focus"],["all","All outstanding"],["calendar","Calendar"]]],
       ["Process",[["inbox","Inbox"],["clarify","Clarify"]]],
       ["Do",[["next","Next actions"],["projects","Projects"],["waiting","Waiting for"]]],
       ["People & work",[["people","People"],["clients","Clients"]]],
