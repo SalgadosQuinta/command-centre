@@ -1037,26 +1037,46 @@ function focusFinanceHTML(){
       </div></div></div>`;
 }
 UI.all = function(){
-  const open=TaskService.all().filter(t=>!["completed","cancelled"].includes(t.status));
+  const open=TaskService.all().filter(t=>!["completed","cancelled","someday"].includes(t.status)&&t.status!=="reference");
   const tStr=todayStr();
-  const secs=[
-    ["Overdue", open.filter(t=>t.dueDate&&t.dueDate<tStr), "var(--danger)"],
-    ["Inbox — unprocessed", open.filter(t=>t.status==="inbox"&&!(t.dueDate&&t.dueDate<tStr)), null],
-    ["Next actions", open.filter(t=>t.status==="next"&&!(t.dueDate&&t.dueDate<tStr)), null],
-    ["Scheduled", open.filter(t=>t.status==="scheduled"&&!(t.dueDate&&t.dueDate<tStr)), null],
-    ["Waiting for", open.filter(t=>t.status==="waiting"&&!(t.cloud&&t.cloud.id)&&!(t.dueDate&&t.dueDate<tStr)), null]
-  ];
-  const cloudOpen=TaskService.all().filter(t=>t.cloud&&t.cloud.id&&!["done","declined"].includes(t.cloud.status)&&!["completed","cancelled"].includes(t.status)&&t.status==="waiting");
-  const someday=open.filter(t=>t.status==="someday");
-  const total=secs.reduce((a,[,l])=>a+l.length,0)+cloudOpen.length;
+  const grp=AppState.allGroup||"status";
+  const cloudLinked=t=>t.cloud&&t.cloud.id&&!["done","declined"].includes(t.cloud.status)&&t.status==="waiting";
+  const overdue=open.filter(t=>t.dueDate&&t.dueDate<tStr);
+  const rest=open.filter(t=>!(t.dueDate&&t.dueDate<tStr));
+  const someday=TaskService.all().filter(t=>t.status==="someday");
+  const total=open.length;
+  const sortD=(a,b)=>String(a.dueDate||a.scheduledDate||"9999").localeCompare(String(b.dueDate||b.scheduledDate||"9999"));
+  let secs=[];
+  if(grp==="status"){
+    secs=[
+      ["Inbox — unprocessed", rest.filter(t=>t.status==="inbox")],
+      ["Next actions", rest.filter(t=>t.status==="next")],
+      ["Scheduled", rest.filter(t=>t.status==="scheduled")],
+      ["Waiting for", rest.filter(t=>t.status==="waiting"&&!cloudLinked(t))],
+      ["Delegated — still open", rest.filter(cloudLinked)]
+    ];
+  } else {
+    const keyFn={
+      area: t=>{ const a=AppState.data.areas.find(x=>x.id===t.areaId); return a?a.name:"No area"; },
+      context: t=>t.context||"No context",
+      project: t=>{ const p=ProjectService.all().find(x=>x.id===t.projectId); return p?p.name:"Standalone"; },
+      priority: t=>({critical:"Critical",high:"High",normal:"Normal",low:"Low"})[t.priority]||"Normal"
+    }[grp];
+    const g={};
+    rest.forEach(t=>{ const k=keyFn(t); (g[k]=g[k]||[]).push(t); });
+    const order=grp==="priority"?["Critical","High","Normal","Low"]:Object.keys(g).sort();
+    secs=order.filter(k=>g[k]).map(k=>[k,g[k]]);
+  }
+  const gBtn=(v,l)=>`<button class="btn sm ${grp===v?"primary":""}" data-allgroup="${v}">${l}</button>`;
   return `
-  <div class="viewhead"><div><h1>All outstanding</h1><div class="sub">${total} open item${total===1?"":"s"} across everything — Someday/Maybe excluded (${someday.length} parked)</div></div></div>
-  ${secs.map(([name,list,col])=>list.length?`
-    <div class="grouphead"><span class="eyebrow" ${col?`style="color:${col}"`:""}>${esc(name)}</span><span class="mono" style="font-size:10px;color:var(--faint)">${list.length}</span></div>
-    <div class="card" style="padding:6px 10px">${listHTML(list.slice().sort((a,b)=>String(a.dueDate||a.scheduledDate||"9999").localeCompare(String(b.dueDate||b.scheduledDate||"9999"))))}</div>`:"").join("")}
-  ${cloudOpen.length?`
-    <div class="grouphead"><span class="eyebrow">Delegated — still open</span><span class="mono" style="font-size:10px;color:var(--faint)">${cloudOpen.length}</span></div>
-    <div class="card" style="padding:6px 10px">${listHTML(cloudOpen)}</div>`:""}
+  <div class="viewhead"><div><h1>All outstanding</h1><div class="sub">${total} open item${total===1?"":"s"} — Someday/Maybe excluded (${someday.length} parked)</div></div>
+    <div class="viewactions">${gBtn("status","Status")}${gBtn("area","Area")}${gBtn("context","Context")}${gBtn("project","Project")}${gBtn("priority","Priority")}</div></div>
+  ${overdue.length?`
+    <div class="grouphead"><span class="eyebrow" style="color:var(--danger)">Overdue</span><span class="mono" style="font-size:10px;color:var(--faint)">${overdue.length}</span></div>
+    <div class="card" style="padding:6px 10px">${listHTML(overdue.slice().sort(sortD))}</div>`:""}
+  ${secs.map(([name,list])=>list.length?`
+    <div class="grouphead"><span class="eyebrow">${esc(name)}</span><span class="mono" style="font-size:10px;color:var(--faint)">${list.length}</span></div>
+    <div class="card" style="padding:6px 10px">${listHTML(list.slice().sort(sortD))}</div>`:"").join("")}
   ${total===0?`<div class="card"><div class="empty"><div class="big">Nothing outstanding</div>Everything is done, delegated and closed — enjoy it.</div></div>`:""}`;
 };
 UI.focus = function(){
@@ -3621,6 +3641,7 @@ function bindView(){
   if(v==="next"){
     const g=$("#groupSel"); if(g) g.onchange=()=>{AppState.filters.group=g.value; render();};
     $$("#view [data-nextrange]").forEach(b=>b.onclick=()=>{AppState.nextRange=b.dataset.nextrange; render();});
+    $$("#view [data-allgroup]").forEach(b=>b.onclick=()=>{AppState.allGroup=b.dataset.allgroup; render();});
     const nb=$("#newNextBtn"); if(nb) nb.onclick=()=>UI.captureModal({status:"next",clarified:true,context:AppState.data.settings.defaultContext});
   }
   if(v==="projects"){ const b=$("#newProjBtn"); if(b) b.onclick=()=>UI.projectModal(null); }

@@ -568,6 +568,16 @@ function extractObj(src, name){
     assert(html2.includes('All outstanding'), 'view renders with its title (signed in)');
     assert(html2.includes('Delegated — still open') && html2.includes('Chase Brandon quote'), 'open delegated tasks listed');
     assert((html2.match(/Chase Brandon quote/g)||[]).length === 1, 'delegated task not double-counted under Waiting');
+    // Categorised groupings
+    w.eval('AppState').allGroup='area';
+    const byArea = w.eval('UI').all();
+    assert(byArea.includes('data-allgroup="area"') && byArea.includes('No area') || /Cyber|Personal|Farm/.test(byArea), 'grouping by area renders area sections');
+    w.eval('AppState').allGroup='priority';
+    const byPri = w.eval('UI').all();
+    const iC=byPri.indexOf('Critical'), iN=byPri.indexOf('Normal');
+    assert(iC===-1||iN===-1||iC<iN, 'priority groups ordered Critical→Low');
+    assert(byPri.indexOf('Overdue')===-1||byPri.indexOf('Overdue')<Math.max(iC,iN), 'Overdue stays pinned on top in every grouping');
+    w.eval('AppState').allGroup='status';
     assert(html2.indexOf('Overdue') < html2.indexOf('Next actions') || !html2.includes('Overdue'), 'overdue section leads when present');
     assert(html2.includes('Inbox — unprocessed') || html2.includes('Next actions'), 'status sections present');
     assert(html2.includes('Someday/Maybe excluded'), 'someday parked, stated honestly');
