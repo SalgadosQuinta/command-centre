@@ -562,8 +562,12 @@ function extractObj(src, name){
     await new Promise(r=>setTimeout(r,600));
     const w=dom.window;
     w.eval('AppState').data = w.eval('demoData')();
+    w.eval('CloudService').session = {access_token:'AT', user:{id:'me', email:'r@x.com'}};
+    w.eval('TaskService').create({title:'Chase Brandon quote', status:'waiting', cloud:{id:'ct1', status:'open', comments:0}});
     const html2 = w.eval('UI').all();
-    assert(html2.includes('All outstanding'), 'view renders with its title');
+    assert(html2.includes('All outstanding'), 'view renders with its title (signed in)');
+    assert(html2.includes('Delegated — still open') && html2.includes('Chase Brandon quote'), 'open delegated tasks listed');
+    assert((html2.match(/Chase Brandon quote/g)||[]).length === 1, 'delegated task not double-counted under Waiting');
     assert(html2.indexOf('Overdue') < html2.indexOf('Next actions') || !html2.includes('Overdue'), 'overdue section leads when present');
     assert(html2.includes('Inbox — unprocessed') || html2.includes('Next actions'), 'status sections present');
     assert(html2.includes('Someday/Maybe excluded'), 'someday parked, stated honestly');

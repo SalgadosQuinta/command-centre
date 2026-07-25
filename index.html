@@ -1044,9 +1044,9 @@ UI.all = function(){
     ["Inbox — unprocessed", open.filter(t=>t.status==="inbox"&&!(t.dueDate&&t.dueDate<tStr)), null],
     ["Next actions", open.filter(t=>t.status==="next"&&!(t.dueDate&&t.dueDate<tStr)), null],
     ["Scheduled", open.filter(t=>t.status==="scheduled"&&!(t.dueDate&&t.dueDate<tStr)), null],
-    ["Waiting for", open.filter(t=>t.status==="waiting"&&!(t.dueDate&&t.dueDate<tStr)), null]
+    ["Waiting for", open.filter(t=>t.status==="waiting"&&!(t.cloud&&t.cloud.id)&&!(t.dueDate&&t.dueDate<tStr)), null]
   ];
-  const cloudOpen=(CloudService.signedIn()?TaskService.delegatedByMe():[]).filter(t=>t.cloud&&!["done","declined"].includes(t.cloud.status));
+  const cloudOpen=TaskService.all().filter(t=>t.cloud&&t.cloud.id&&!["done","declined"].includes(t.cloud.status)&&!["completed","cancelled"].includes(t.status)&&t.status==="waiting");
   const someday=open.filter(t=>t.status==="someday");
   const total=secs.reduce((a,[,l])=>a+l.length,0)+cloudOpen.length;
   return `
