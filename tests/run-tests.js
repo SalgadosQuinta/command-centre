@@ -578,6 +578,17 @@ function extractObj(src, name){
     assert(iC===-1||iN===-1||iC<iN, 'priority groups ordered Critical→Low');
     assert(byPri.indexOf('Overdue')===-1||byPri.indexOf('Overdue')<Math.max(iC,iN), 'Overdue stays pinned on top in every grouping');
     w.eval('AppState').allGroup='status';
+    // Click-through in the rendered app: navigating to the view and clicking Area must re-render grouped
+    const dApp = w.document;
+    w.eval('go')('all');
+    await new Promise(r=>setTimeout(r,150));
+    const areaBtn = dApp.querySelector('#view [data-allgroup="area"]');
+    assert(areaBtn, 'group buttons rendered in the live view');
+    areaBtn.click();
+    await new Promise(r=>setTimeout(r,150));
+    assert(w.eval('AppState').allGroup === 'area', 'clicking a group button actually switches the grouping');
+    assert(dApp.querySelector('#view [data-allgroup="area"]').classList.contains('primary'), 'active group highlighted after click');
+    w.eval('AppState').allGroup='status';
     assert(html2.indexOf('Overdue') < html2.indexOf('Next actions') || !html2.includes('Overdue'), 'overdue section leads when present');
     assert(html2.includes('Inbox — unprocessed') || html2.includes('Next actions'), 'status sections present');
     assert(html2.includes('Someday/Maybe excluded'), 'someday parked, stated honestly');

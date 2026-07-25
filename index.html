@@ -3638,10 +3638,12 @@ function bindView(){
       render();
     }));
   }
+  if(v==="all"){
+    $$("#view [data-allgroup]").forEach(b=>b.onclick=()=>{AppState.allGroup=b.dataset.allgroup; render();});
+  }
   if(v==="next"){
     const g=$("#groupSel"); if(g) g.onchange=()=>{AppState.filters.group=g.value; render();};
     $$("#view [data-nextrange]").forEach(b=>b.onclick=()=>{AppState.nextRange=b.dataset.nextrange; render();});
-    $$("#view [data-allgroup]").forEach(b=>b.onclick=()=>{AppState.allGroup=b.dataset.allgroup; render();});
     const nb=$("#newNextBtn"); if(nb) nb.onclick=()=>UI.captureModal({status:"next",clarified:true,context:AppState.data.settings.defaultContext});
   }
   if(v==="projects"){ const b=$("#newProjBtn"); if(b) b.onclick=()=>UI.projectModal(null); }
