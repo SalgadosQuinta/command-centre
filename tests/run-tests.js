@@ -982,6 +982,79 @@ function extractObj(src, name){
     assert(gtdSrc.includes('found on a second pass'), 'recovered tasks are attributed honestly');
   }
 
+  console.log('--- Next actions: group headings sort by value, not by label text ---');
+  {
+    const { JSDOM } = require('jsdom');
+    const gtdHtml = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    const dom = new JSDOM(gtdHtml, {runScripts:'dangerously', url:'https://example.test/',
+      beforeParse(w){ w.fetch=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve('[]'),json:()=>Promise.resolve({})}); }});
+    await new Promise(r=>setTimeout(r,600));
+    const w=dom.window, d=w.document;
+    w.eval('AppState').data = w.eval('demoData')();
+    w.eval('setCtxFilter')([]);
+    w.eval('AppState').nextRange='all';
+    const TS=w.eval('TaskService');
+    TS.all().slice().forEach(t=>{ if(t.status==='next') TS.remove(t.id); });
+
+    // The reported bug: 1 August ordered before 30 July
+    TS.create({title:'August task', status:'next', clarified:true, dueDate:'2026-08-01'});
+    TS.create({title:'July task',   status:'next', clarified:true, dueDate:'2026-07-30'});
+    TS.create({title:'September task', status:'next', clarified:true, dueDate:'2026-09-02'});
+    TS.create({title:'Undated task', status:'next', clarified:true});
+    w.eval('AppState').filters.group='due';
+    w.eval('go')('next');
+    await new Promise(r=>setTimeout(r,200));
+    let vh = d.getElementById('view').innerHTML;
+    const F = w.eval('fmtDate');
+    const iJul = vh.indexOf(F('2026-07-30')), iAug = vh.indexOf(F('2026-08-01')), iSep = vh.indexOf(F('2026-09-02')), iNone = vh.indexOf('No due date');
+    assert(iJul >= 0 && iAug >= 0 && iSep >= 0, 'all three date headings rendered');
+    assert(iJul < iAug, '30 July comes before 1 August (was the reported bug)');
+    assert(iAug < iSep, '1 August comes before 2 September');
+    assert(iNone > iSep, 'undated actions sit at the bottom, not sorted among the dates');
+
+    // Year boundaries must not regress to text order either
+    TS.create({title:'New year task', status:'next', clarified:true, dueDate:'2027-01-04'});
+    w.eval('render')();
+    await new Promise(r=>setTimeout(r,200));
+    vh = d.getElementById('view').innerHTML;
+    assert(vh.indexOf(F('2026-09-02')) < vh.indexOf(F('2027-01-04')), 'next year sorts after this year');
+
+    // Priority grouping was alphabetical too: Critical, High, Low, Normal
+    TS.all().slice().forEach(t=>{ if(t.status==='next') TS.remove(t.id); });
+    ['critical','high','normal','low'].forEach(p=>TS.create({title:p+' item', status:'next', clarified:true, priority:p}));
+    w.eval('AppState').filters.group='priority';
+    w.eval('render')();
+    await new Promise(r=>setTimeout(r,200));
+    vh = d.getElementById('view').innerHTML;
+    const pos = ['Critical','High','Normal','Low'].map(x=>vh.indexOf(x));
+    assert(pos.every(x=>x>=0), 'all four priority headings rendered');
+    assert(pos[0]<pos[1] && pos[1]<pos[2] && pos[2]<pos[3], 'priority runs Critical -> High -> Normal -> Low');
+
+    // Energy likewise
+    TS.all().slice().forEach(t=>{ if(t.status==='next') TS.remove(t.id); });
+    ['high','medium','low'].forEach(e=>TS.create({title:e+' e', status:'next', clarified:true, energy:e}));
+    w.eval('AppState').filters.group='energy';
+    w.eval('render')();
+    await new Promise(r=>setTimeout(r,200));
+    vh = d.getElementById('view').innerHTML;
+    assert(vh.indexOf('high energy') < vh.indexOf('medium energy') && vh.indexOf('medium energy') < vh.indexOf('low energy'),
+      'energy runs high -> medium -> low');
+
+    // Named groupings stay alphabetical, with the "none" bucket last
+    TS.all().slice().forEach(t=>{ if(t.status==='next') TS.remove(t.id); });
+    TS.create({title:'z', status:'next', clarified:true, context:'@Zebra'});
+    TS.create({title:'a', status:'next', clarified:true, context:'@Alpha'});
+    TS.create({title:'n', status:'next', clarified:true});
+    w.eval('AppState').filters.group='context';
+    w.eval('setCtxFilter')([]);
+    w.eval('render')();
+    await new Promise(r=>setTimeout(r,200));
+    vh = d.getElementById('view').innerHTML;
+    const gh = vh.slice(vh.indexOf('grouphead'));
+    assert(gh.indexOf('@Alpha') < gh.indexOf('@Zebra'), 'contexts stay alphabetical');
+    assert(gh.indexOf('@Zebra') < gh.indexOf('No context'), 'the "No context" bucket sits last');
+  }
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

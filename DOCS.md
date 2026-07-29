@@ -163,3 +163,32 @@ disagree, and how many tasks the second pass recovered.
 
 **Diagnosis note:** the function was tested live by calling it with the
 service-role key as bearer. Nothing was made public and no test users created.
+
+## Next actions: group heading order (gtdcc-v51)
+
+`UI.next` grouped tasks by a display label and then sorted the headings with a
+plain `Object.keys(groups).sort()` — i.e. alphabetically on the rendered text.
+So "01 Aug 2026" sorted before "30 Jul 2026", and priority ran Critical, High,
+Low, Normal.
+
+Each grouping now supplies its own sort token via `sortFn`, captured into
+`groupSort` as the buckets are built:
+
+| Group | Sorted by |
+|---|---|
+| due | the raw ISO date (`YYYY-MM-DD` sorts correctly as text) |
+| priority | critical → high → normal → low |
+| energy | high → medium → low |
+| context / project / area | name, case-insensitive |
+
+The "none" bucket (No due date, No context, Standalone, No area) is prefixed
+`2` against `1` for everything else, so it always lands last rather than being
+alphabetised among real values. Ties fall back to label order.
+
+**Lesson:** never sort group headings by their display string. Formatted dates,
+capitalised enums and localised month names all sort wrongly. Keep the sort key
+separate from the label.
+
+Note for tests: `toLocaleDateString("en-GB", {month:"short"})` renders September
+as **"Sept"**, not "Sep". Assert against `fmtDate()` output rather than
+hard-coded date strings.
