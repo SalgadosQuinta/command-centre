@@ -917,6 +917,19 @@ const GTDService = {
     return TaskService.all().filter(t=>["next","waiting"].includes(t.status)&&new Date(t.updatedAt).getTime()<cut);
   },
   waitingOverdue(){ const t0=dateOf(todayStr()); return TaskService.byStatus("waiting").filter(t=>t.waitingFor?.followUpDate&&dateOf(t.waitingFor.followUpDate)<=t0); },
+  /* Every open waiting item, most pressing first. Most delegations never get a
+     follow-up date, so keying off that alone hid the whole list. Dated items
+     sort by the soonest date they have; undated ones follow, longest-waiting
+     first, since age is the only signal they carry. */
+  waitingDate(t){ return (t.waitingFor&&(t.waitingFor.followUpDate||t.waitingFor.expectedDate))||t.dueDate||null; },
+  waitingRanked(){
+    const items=TaskService.byStatus("waiting").filter(t=>!TaskService.isChild(t));
+    const age=t=>String((t.waitingFor&&t.waitingFor.delegatedDate)||t.createdAt||"");
+    const dated=items.filter(t=>this.waitingDate(t))
+      .sort((a,b)=>String(this.waitingDate(a)).localeCompare(String(this.waitingDate(b)))||age(a).localeCompare(age(b)));
+    const undated=items.filter(t=>!this.waitingDate(t)).sort((a,b)=>age(a).localeCompare(age(b)));
+    return dated.concat(undated);
+  },
   projectsNoNext(){ return ProjectService.active().filter(p=>!ProjectService.hasNextAction(p.id)); },
   projectsReviewDue(){ const t0=dateOf(todayStr()); return ProjectService.active().filter(p=>p.reviewDate&&dateOf(p.reviewDate)<=t0); },
   lastWeeklyReview(){
@@ -1096,6 +1109,14 @@ function taskRowHTML(t, opts={}){
   if(t.estimatedMinutes) meta.push(`<span class="m">${t.estimatedMinutes}m</span>`);
   if(t.energy&&t.energy!=="medium") meta.push(`<span class="m">${esc(t.energy)} energy</span>`);
   if(t.waitingFor?.person) meta.push(`<span class="m" style="color:var(--wait)">⏲ ${esc(t.waitingFor.person)}</span>`);
+  if(t.status==="waiting"){
+    const wd=t.waitingFor&&(t.waitingFor.followUpDate||t.waitingFor.expectedDate);
+    if(wd) meta.push(`<span class="m" style="color:${wd<todayStr()?"var(--danger)":"var(--muted)"}">${t.waitingFor.followUpDate?"chase":"expected"} ${esc(fmtDate(wd))}</span>`);
+    else if(t.waitingFor?.delegatedDate){
+      const dd=daysBetween(dateOf(t.waitingFor.delegatedDate),dateOf(todayStr()));
+      if(dd>0) meta.push(`<span class="m" style="color:${dd>14?"var(--warn)":"var(--faint)"}">waiting ${dd}d</span>`);
+    }
+  }
   for(const tg of (t.tags||[]).slice(0,3)) meta.push(`<span class="tag">${esc(tg)}</span>`);
   if(opts.extraMeta) meta.push(opts.extraMeta);
   const kids=(opts.subs||opts.showSubCount)?TaskService.children(t.id):[];
@@ -1283,7 +1304,15 @@ UI.focus = function(){
 
   <div class="grid c2">
     <div class="card"><h2><span class="eyebrow">Today</span></h2>${listHTML(GTDService.today(),"No commitments scheduled for today.")}</div>
-    <div class="card"><h2><span class="eyebrow">Waiting for — follow up</span></h2>${listHTML(GTDService.waitingOverdue(),"No follow-ups due.")}</div>
+    ${(()=>{
+      const all=GTDService.waitingRanked(), FOCUS_WAIT_MAX=8, shown=all.slice(0,FOCUS_WAIT_MAX), more=all.length-shown.length;
+      const dueNow=GTDService.waitingOverdue().length;
+      return `<div class="card"><h2 style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <span class="eyebrow">Waiting for${all.length?" ("+all.length+")":""}</span>
+        ${dueNow?`<span class="mono" style="font-size:10px;color:var(--danger)">${dueNow} to chase</span>`:""}</h2>
+        ${listHTML(shown,"Nothing is waiting on anyone else.")}
+        ${more>0?`<div style="margin-top:8px"><button class="btn ghost sm" data-go="waiting">+ ${more} more</button></div>`:""}</div>`;
+    })()}
     <div class="card"><h2><span class="eyebrow">Upcoming (7 days)</span></h2>${listHTML(GTDService.upcoming(7),"Nothing time-sensitive approaching.")}</div>
     <div class="card"><h2><span class="eyebrow">Stale (${AppState.data.settings.staleTaskDays}+ days untouched)</span></h2>${listHTML(GTDService.stale().slice(0,6),"Nothing has gone stale.")}</div>
   </div>

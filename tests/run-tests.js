@@ -1193,6 +1193,74 @@ function extractObj(src, name){
     assert(none.length >= 3, 'even with a clean system there are three evergreen tips (' + none.length + ')');
   }
 
+  console.log('--- Focus: Waiting for lists everything, most pressing first ---');
+  {
+    const { JSDOM } = require('jsdom');
+    const gtdHtml = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    const dom = new JSDOM(gtdHtml, {runScripts:'dangerously', url:'https://example.test/',
+      beforeParse(w){ w.fetch=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve('[]'),json:()=>Promise.resolve({})}); }});
+    await new Promise(r=>setTimeout(r,600));
+    const w=dom.window, d2=w.document;
+    w.eval('AppState').data = w.eval('demoData')();
+    const TS=w.eval('TaskService'), G=w.eval('GTDService');
+    TS.all().slice().forEach(t=>{ if(t.status==='waiting') TS.remove(t.id); });
+    const iso = d => new Date(Date.now()+d*86400000).toISOString().slice(0,10);
+
+    // The reported situation: several waiting items, none with a follow-up date
+    const mk = (title, wf) => TS.create({title, status:'waiting', clarified:true, waitingFor:wf});
+    mk('Undated, delegated ages ago', {person:'Luke', delegatedDate:iso(-40)});
+    mk('Undated, delegated recently', {person:'Mark', delegatedDate:iso(-2)});
+    mk('Expected next week',          {person:'Ingrid', delegatedDate:iso(-5), expectedDate:iso(6)});
+    mk('Chase today',                 {person:'Christian', delegatedDate:iso(-9), followUpDate:iso(0)});
+    mk('Chase overdue',               {person:'Brandon', delegatedDate:iso(-20), followUpDate:iso(-3)});
+    mk('Expected far out',            {person:'Andrew', delegatedDate:iso(-1), expectedDate:iso(25)});
+    mk('No person at all',            {person:'', delegatedDate:iso(-15)});
+
+    const ranked = G.waitingRanked();
+    assert(ranked.length === 7, 'every open waiting item is included (got ' + ranked.length + ')');
+    assert(G.waitingOverdue().length === 2, 'only two have a follow-up date actually due — the old card would have shown just those');
+
+    // Ordering: dated items by soonest date, then undated by longest waiting
+    const titles = ranked.map(t=>t.title);
+    assert(titles[0] === 'Chase overdue', 'the most overdue chase leads');
+    assert(titles[1] === 'Chase today', 'then today\'s chase');
+    assert(titles[2] === 'Expected next week', 'then the nearest expected date');
+    assert(titles[3] === 'Expected far out', 'then the later expected date');
+    assert(titles[4] === 'Undated, delegated ages ago', 'undated items follow, longest-waiting first');
+    assert(titles[5] === 'No person at all', 'undated ordering continues by age');
+    assert(titles[6] === 'Undated, delegated recently', 'the newest undated item comes last');
+
+    // Rendered on Focus
+    w.eval('go')('focus');
+    await new Promise(r=>setTimeout(r,300));
+    let vh = d2.getElementById('view').innerHTML;
+    assert(vh.includes('Waiting for (7)'), 'the card states how many are waiting');
+    assert(vh.includes('2 to chase'), 'items actually due for a chase are called out');
+    ranked.slice(0,7).forEach(t=>assert(vh.includes(t.title), 'listed on Focus: ' + t.title));
+    assert(!vh.includes('No follow-ups due.'), 'the empty-state message is gone');
+    assert(/chase /.test(vh) && /expected /.test(vh), 'rows show whether the date is a chase or an expected date');
+    assert(/waiting 40d/.test(vh), 'undated rows show how long they have been waiting');
+
+    // Overflow: only as many as fit, with a route to the rest
+    for(let i=0;i<5;i++) mk('Extra item '+i, {person:'X', delegatedDate:iso(-1)});
+    w.eval('render')();
+    await new Promise(r=>setTimeout(r,250));
+    vh = d2.getElementById('view').innerHTML;
+    assert(vh.includes('Waiting for (12)'), 'count reflects all of them');
+    const rowsShown = (vh.match(/data-task=/g)||[]).length;
+    assert(vh.includes('+ 4 more'), 'the overflow is stated rather than silently dropped');
+    const moreBtn = Array.from(d2.querySelectorAll('#view [data-go="waiting"]')).pop();
+    assert(moreBtn, 'a route through to the full list exists');
+    moreBtn.click();
+    await new Promise(r=>setTimeout(r,250));
+    assert(w.eval('AppState').currentView === 'waiting', 'clicking through opens the Waiting for view');
+
+    // Subtasks must not pad the list
+    const parent = ranked[0];
+    TS.create({title:'A subtask', status:'waiting', parentId:parent.id, waitingFor:{person:'Y'}});
+    assert(G.waitingRanked().every(t=>t.title !== 'A subtask'), 'subtasks stay under their parent, not in the waiting roll-up');
+  }
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

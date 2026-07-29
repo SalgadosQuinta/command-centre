@@ -1,5 +1,5 @@
 /* GTD Command Centre service worker */
-const CACHE = 'gtdcc-v53';
+const CACHE = 'gtdcc-v54';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {

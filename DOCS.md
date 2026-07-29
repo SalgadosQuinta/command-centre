@@ -251,3 +251,30 @@ There are always at least three tips available, including on a clean system.
 
 Tiles stay two-across on narrow screens rather than collapsing to one, so the
 row still reads as a row on a phone.
+
+## Focus: Waiting for was empty (gtdcc-v54)
+
+The Focus card called `GTDService.waitingOverdue()`, which only returns items
+whose `followUpDate` is set **and** already due. Nothing in the delegation paths
+sets a follow-up date by default — the drawer leaves it null and the free-text
+delegate modal never asks — so a list of seven waiting items rendered as
+"No follow-ups due."
+
+`GTDService.waitingRanked()` now returns every open waiting item:
+
+1. Dated items first, by the soonest date they carry —
+   `followUpDate` → `expectedDate` → `dueDate` (`waitingDate()`).
+2. Undated items after, longest-waiting first by `delegatedDate` (falling back
+   to `createdAt`), since age is the only signal they have.
+3. Subtasks excluded — they belong under their parent.
+
+The card shows up to 8, states the total in its heading, flags how many are
+actually due for a chase, and offers "+ N more" through to the full view rather
+than dropping the remainder silently.
+
+Rows now also carry the waiting date: "chase 12 Aug" or "expected 12 Aug" (red
+once past), and undated rows show "waiting 40d" — amber past a fortnight.
+
+**Lesson:** a card whose query is narrower than its heading will read as "you
+have nothing" rather than "nothing matched this filter". Either widen the query
+to match the heading or make the filter visible in it.
