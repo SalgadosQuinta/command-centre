@@ -111,7 +111,16 @@ Known people: ${JSON.stringify(people || [])}
 Extraction principles:
 - Titles must be next physical actions starting with a verb ("Email Mark the revised SOW", not "Mark's email").
 - One task per distinct commitment or request. Do not invent tasks that are not in the material.
+- EXHAUSTIVENESS IS THE PRIORITY. Work through the material top to bottom and return every item, in the order they appear. Items near the end matter as much as the first ones.
+- If the material is ALREADY a list of tasks (headings, bullets, "Owner:"/"Delegated to:" blocks, meeting-notes exports), return exactly ONE task per listed item. Preserve the given order.
+- NEVER merge, dedupe, group or skip items because two of them look similar, cover the same system, or share an owner. Two similar items are two tasks.
+- Do not summarise or truncate the list. If it is long, it is long.
+- item_count: the number of distinct actionable items you identified in the material. Set this BEFORE writing the tasks array, and make the array that same length.
 - due_date only when a deadline is stated or clearly implied; format YYYY-MM-DD; otherwise null.
+- person / delegation: if the material states ownership EXPLICITLY (lines like "Owner:", "Delegated to:", "Assigned to:", "Action:"), honour it exactly and ignore other names in the prose.
+  · "Delegated to: (none)", "(none)", "-", "n/a", or "Owner: you"/"Owner: me" all mean person = null and suggested_status is NOT "waiting" — this is the user's own task even if other people are named in the description.
+  · A name only mentioned as a recipient, attendee or subject ("send it to Ingrid", "work with Mihail") is NOT a delegate. Do not set person from prose alone.
+  · Only where no explicit marker exists may you infer from the prose that the user is waiting on someone.
 - If the material shows the user is waiting on someone else, set suggested_status "waiting" and fill person.
 - If it is a request TO the user, suggested_status "next" when a date exists, otherwise "inbox".
 - priority: "high" only when urgency is explicit or implied by the rules; otherwise "normal".
@@ -125,7 +134,7 @@ Also extract money items when the material contains them:
 Only include amounts explicitly present. Empty arrays when none.
 
 Respond ONLY with JSON, no markdown fences, exactly this shape:
-{"summary":"...","tasks":[{"title":"...","description":"...","due_date":null,"priority":"normal","context":null,"project":null,"area":null,"person":null,"suggested_status":"inbox"}],"finance_payments":[],"finance_revenue":[]}`;
+{"summary":"...","item_count":0,"tasks":[{"title":"...","description":"...","due_date":null,"priority":"normal","context":null,"project":null,"area":null,"person":null,"suggested_status":"inbox"}],"finance_payments":[],"finance_revenue":[]}`;
 
     const content: unknown[] = [];
     for (const im of (images || []).slice(0, 4)) {
@@ -147,38 +156,99 @@ Respond ONLY with JSON, no markdown fences, exactly this shape:
     if (text) content.push({ type: "text", text: String(text).slice(0, 24000) });
     if (!text) content.push({ type: "text", text: mode === "finance" ? "Extract the money items from the attached document(s)." : "Extract the tasks from the attached screenshot(s)." });
 
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 16000,
-        system,
-        messages: [{ role: "user", content }],
-      }),
-    });
+    const ask = async (sys: string, msgs: unknown[]) => {
+      const rr = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 16000,
+          system: sys,
+          messages: msgs,
+        }),
+      });
+      const dd = await rr.json();
+      const txt = (dd.content || [])
+        .filter((c: { type: string }) => c.type === "text")
+        .map((c: { text: string }) => c.text)
+        .join("")
+        .replace(/```json|```/g, "")
+        .trim();
+      return { ok: rr.ok, data: dd, text: txt };
+    };
 
-    const d = await r.json();
-    if (!r.ok) {
-      return json({ error: d?.error?.message || "AI request failed" }, 502);
+    const first = await ask(system, [{ role: "user", content }]);
+    if (!first.ok) {
+      return json({ error: first.data?.error?.message || "AI request failed" }, 502);
     }
-
-    const raw = (d.content || [])
-      .filter((c: { type: string }) => c.type === "text")
-      .map((c: { text: string }) => c.text)
-      .join("");
-    const clean = raw.replace(/```json|```/g, "").trim();
+    const d = first.data;
+    const clean = first.text;
 
     const hitCeiling = d.stop_reason === "max_tokens";
+
+    /* Second pass. A single extraction over a long list quietly drops items —
+       and a dropped item is invisible to the user, which is the worst kind of
+       failure here. So we show the model what it produced and ask only for
+       what it missed. One extra call, bounded, and it cannot remove anything. */
+    const sweep = async (got: Record<string, unknown>[]) => {
+      const titles = got.map((t) => String(t.title || "")).filter(Boolean);
+      const sweepSystem = `${system}
+
+SECOND PASS. A first pass over this same material already produced the tasks listed below.
+Your only job now is to find actionable items in the material that are NOT already covered by that list.
+- Judge coverage by the underlying commitment, not by wording.
+- Two similar-sounding items are BOTH needed if the material lists them separately.
+- If nothing was missed, return {"item_count":0,"tasks":[],"finance_payments":[],"finance_revenue":[]}.
+- Never repeat an item that is already covered. Never return an item that is not in the material.
+
+Already extracted (${titles.length}):
+${titles.map((t, i) => `${i + 1}. ${t}`).join("\n")}`;
+      try {
+        const again = await ask(sweepSystem, [{ role: "user", content }]);
+        if (!again.ok) return [];
+        let extra: Record<string, unknown>[] = [];
+        try {
+          const p2 = JSON.parse(again.text);
+          extra = Array.isArray(p2.tasks) ? p2.tasks : [];
+        } catch {
+          extra = extractArray(again.text, "tasks");
+        }
+        const seen = new Set(titles.map((t) => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()));
+        return extra.filter((t) => {
+          const k = String(t.title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+          if (!k || seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+      } catch {
+        return [];
+      }
+    };
+
+    const longMaterial = String(text || "").length > 1500 ||
+      (images || []).length > 0 || (documents || []).length > 0;
 
     try {
       const parsed = JSON.parse(clean);
       if (!Array.isArray(parsed.tasks)) throw new Error("no tasks array");
       if (hitCeiling) parsed.truncated = true;
+
+      const declared = Number(parsed.item_count) || 0;
+      const firstPass = parsed.tasks.length;
+      // Sweep when the model itself says it found more than it wrote, or
+      // whenever the material is long enough for silent drops to be likely.
+      if (mode !== "finance" && !hitCeiling && firstPass > 0 &&
+          (declared > firstPass || longMaterial)) {
+        const extra = await sweep(parsed.tasks);
+        parsed.swept = extra.length;   // always reported, so a silent no-op sweep is visible
+        if (extra.length) parsed.tasks = parsed.tasks.concat(extra);
+      }
+      parsed.first_pass = firstPass;
+      if (declared && parsed.tasks.length < declared) parsed.incomplete = true;
       return json(parsed);
     } catch (_e) {
       // Truncated or otherwise malformed: return whatever objects completed

@@ -129,3 +129,37 @@ assumed complete.
 live. The deployed source was recovered from the eszip sourcemap before
 editing, so nothing was regressed. `supabase/functions/smart-capture/index.ts`
 now matches deployed v11 — keep it that way.
+
+## Smart capture: dropped items (gtdcc-v50 / smart-capture v14)
+
+Raising `max_tokens` fixed truncation but not the real complaint. Replaying
+Rodney's 13-item meeting-notes paste against the live function showed the
+first pass returning **10 of 13** on some runs and 13 on others — the model
+silently drops items from long lists, and a dropped item is invisible.
+
+Three changes:
+
+1. **Prompt**: exhaustiveness stated as the priority; explicit ban on merging,
+   deduping or grouping similar items; an already-structured list maps one task
+   per listed item, in order. This overrides even user rules asking for a short
+   output (verified adversarially).
+2. **`item_count`**: the model declares how many items it found. A shorter
+   `tasks` array than that sets `incomplete`.
+3. **Reconciliation sweep**: for long material, a second call shows the model
+   its own first-pass titles and asks *only* for what it missed. Additive by
+   construction — it cannot remove anything, and results are deduped on a
+   normalised title. `swept` is always reported (including `0`) so a sweep that
+   silently no-ops is visible. Skipped in finance mode.
+
+Observed working: a run with `first_pass: 10, swept: 3` returned all 13.
+
+**Delegation accuracy.** Explicit markers ("Owner:", "Delegated to:",
+"Assigned to:") are now honoured exactly. "Delegated to: (none)" or "Owner:
+you" means `person = null`, and a name appearing only in prose ("send it to
+Ingrid", "work with Mihail") is no longer treated as an assignee.
+
+The console shows the task count, a **MAY BE INCOMPLETE** band when the counts
+disagree, and how many tasks the second pass recovered.
+
+**Diagnosis note:** the function was tested live by calling it with the
+service-role key as bearer. Nothing was made public and no test users created.

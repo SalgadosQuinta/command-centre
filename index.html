@@ -1957,10 +1957,12 @@ function renderSmartResults(out){
   const projs=ProjectService.all().filter(p=>p.status!=="completed");
   if(!tasks.length){ $("#scResults").innerHTML=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">${out.truncated?"The analysis was cut short before any task could be read. Try pasting a smaller section.":"No actionable tasks found in that material."}</p>`; return; }
   $("#scResults").innerHTML=`
-    ${out.truncated?`<div class="healthband attn" style="margin-top:12px">
-      <span class="stateword">CUT SHORT</span>
-      <span style="color:var(--muted);font-size:12.5px">The analysis hit its length limit, so ${tasks.length} task${tasks.length===1?"":"s"} came back but there may be more at the end of that material. Add these, then paste the remainder and analyse again.</span></div>`:""}
-    <div class="grouphead" style="margin-top:12px"><span class="eyebrow">Proposed tasks (${tasks.length}) — untick any you don't want</span></div>
+    ${out.truncated||out.incomplete?`<div class="healthband attn" style="margin-top:12px">
+      <span class="stateword">${out.truncated?"CUT SHORT":"MAY BE INCOMPLETE"}</span>
+      <span style="color:var(--muted);font-size:12.5px">${out.truncated
+        ?`The analysis hit its length limit, so ${tasks.length} task${tasks.length===1?"":"s"} came back but there may be more at the end of that material. Add these, then paste the remainder and analyse again.`
+        :`The analysis counted ${esc(String(out.item_count||"more"))} items but only returned ${tasks.length}. Check the end of your material for anything missing.`}</span></div>`:""}
+    <div class="grouphead" style="margin-top:12px"><span class="eyebrow">Proposed tasks (${tasks.length}) — untick any you don't want</span>${out.swept?`<span class="mono" style="font-size:10px;color:var(--faint)">${out.swept} found on a second pass</span>`:""}</div>
     ${peopleDatalist("scPeopleList")}
     ${tasks.map((t,i)=>`
     <div class="card" style="margin-bottom:8px;padding:10px 12px">

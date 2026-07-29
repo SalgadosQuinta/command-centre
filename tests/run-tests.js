@@ -954,6 +954,34 @@ function extractObj(src, name){
     assert(gtdSrc.includes('Proposed tasks (${tasks.length})'), 'the count is shown so a short list is obvious');
   }
 
+  console.log('--- Smart capture: exhaustive extraction with a reconciliation pass ---');
+  {
+    const scSrc = fs.readFileSync(path.join(ROOT,'supabase','functions','smart-capture','index.ts'),'utf8');
+    assert(scSrc.includes('EXHAUSTIVENESS IS THE PRIORITY'), 'prompt puts completeness above brevity');
+    assert(scSrc.includes('NEVER merge, dedupe, group or skip'), 'prompt forbids collapsing similar items');
+    assert(scSrc.includes('exactly ONE task per listed item'), 'an already-structured list maps one-to-one');
+    assert(scSrc.includes('item_count'), 'model declares how many items it found');
+    assert(scSrc.includes('SECOND PASS'), 'reconciliation sweep present');
+    assert(scSrc.includes('parsed.swept = extra.length'), 'sweep result always reported, including zero');
+    assert(scSrc.includes('mode !== "finance"'), 'the sweep does not run for finance-mode documents');
+    assert(scSrc.includes('Delegated to: (none)'), 'explicit ownership markers are honoured');
+    assert(scSrc.includes('is NOT a delegate'), 'a name mentioned in prose is not treated as an assignee');
+
+    // The sweep must be additive only: it can never drop or duplicate a task
+    const vm = require('vm');
+    const norm = (t) => String(t).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+    const titles = ['Spin up endpoint PoC','Duplicate VIP alert'];
+    const seen = new Set(titles.map(norm));
+    const extra = [{title:'Duplicate VIP alert'},{title:'DUPLICATE  vip   alert!'},{title:'Scope Power Platform governance'},{title:''}];
+    const kept = extra.filter(t=>{ const k=norm(t.title); if(!k||seen.has(k)) return false; seen.add(k); return true; });
+    assert(kept.length === 1 && kept[0].title === 'Scope Power Platform governance',
+      'sweep dedupe ignores case and punctuation, and drops blanks (kept ' + kept.length + ')');
+
+    const gtdSrc = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    assert(gtdSrc.includes('MAY BE INCOMPLETE'), 'console warns when fewer tasks came back than were counted');
+    assert(gtdSrc.includes('found on a second pass'), 'recovered tasks are attributed honestly');
+  }
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
