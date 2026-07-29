@@ -71,3 +71,31 @@ Behaviour:
 - The old lightweight `subtasks[]` checklist remains, now labelled
   **Quick checklist** in the drawer, for throwaway items that never need to
   be real tasks.
+
+## Delegation is free text (gtdcc-v48)
+
+Delegation no longer depends on the person having an app account. The delegate
+modal takes **any name** as free text, with a `<datalist>` of suggestions drawn
+from both app accounts and every name already used in the app
+(`peopleNames()`). `matchAccount()` decides what happens on send:
+
+- **Name matches an account** — unchanged behaviour: a `cloud_tasks` row, a
+  WhatsApp message and a push, so it lands in their Tasks app.
+- **Name matches nothing** — the task moves to Waiting for with the typed name,
+  note and expected date. No cloud row, no error.
+
+The modal states which of the two will happen and relabels its button
+accordingly, so the outcome is never a surprise. The Delegate button is now
+offered even when signed out, since local delegation needs no account.
+
+`CloudService.peopleCache` backs the suggestions and is only ever overwritten
+by a **non-empty** response — a failed or empty fetch must not wipe known names
+mid-interaction. The delegate modal redraws after a background refresh only if
+the name list actually changed.
+
+**Smart capture review cards** now carry an editable **Notes** textarea (saved
+to `task.notes`) and an editable **Delegated to** input, pre-filled from the
+analysis. A name in that box is decisive: the task is created as Waiting for
+with that person, whether or not they have an account. Nothing is sent to the
+cloud silently — the toast says how many of the new tasks could also be pushed
+to a Tasks app via the task's own Delegate button.

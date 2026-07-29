@@ -1006,6 +1006,36 @@ const STATUS_LABEL = {inbox:"Inbox",next:"Next action",scheduled:"Scheduled",wai
 const VIEW_TITLES = {focus:"Focus",all:"All outstanding",inbox:"Inbox",clarify:"Clarify",next:"Next actions",projects:"Projects",waiting:"Waiting for",calendar:"Calendar",someday:"Someday / Maybe",reference:"Reference",review:"Review",settings:"Data & settings",search:"Search results",project:"Project"};
 
 function areaName(id){ return AppState.data.areas.find(a=>a.id===id)?.name||""; }
+/* ---- People are free text everywhere. Accounts are only a convenience:
+   a name that happens to match an app account can also be sent to their Tasks
+   app; a name that matches nothing is still tracked as a Waiting-for. ---- */
+function accountPeople(){
+  const c=(typeof CloudService!=="undefined"&&CloudService.peopleCache)||[];
+  return Array.isArray(c)?c.filter(p=>!p.archived):[];
+}
+function peopleNames(){
+  const out=[];
+  accountPeople().forEach(p=>out.push(p.display_name||p.email));
+  (AppState.data?.tasks||[]).forEach(t=>{
+    if(t.waitingFor&&t.waitingFor.person) out.push(t.waitingFor.person);
+    if(t.cloud&&t.cloud.assignee) out.push(t.cloud.assignee);
+  });
+  const seen=new Set(), uniq=[];
+  out.filter(Boolean).map(n=>String(n).trim()).filter(Boolean).forEach(n=>{
+    const k=n.toLowerCase(); if(!seen.has(k)){ seen.add(k); uniq.push(n); }
+  });
+  return uniq.sort((a,b)=>a.localeCompare(b));
+}
+function peopleDatalist(id){
+  return `<datalist id="${esc(id)}">${peopleNames().map(n=>`<option value="${esc(n)}"></option>`).join("")}</datalist>`;
+}
+/* Does this typed name correspond to an actual app account? */
+function matchAccount(name){
+  const q=String(name||"").trim().toLowerCase(); if(!q) return null;
+  return accountPeople().find(p=>
+    String(p.display_name||"").trim().toLowerCase()===q ||
+    String(p.email||"").trim().toLowerCase()===q) || null;
+}
 /* ---- Context filter chips (Next actions). Persisted, but read lazily and
    validated so a corrupt value can never become a boot input. ---- */
 const CTXF_KEY="gtdcc-ctxfilter";
@@ -1744,7 +1774,16 @@ const CloudService = {
     if(!bodyText||!bodyText.trim()){ return null; }
     try{ const d=JSON.parse(bodyText); if(method==="GET") OfflineService.cache(path,d); return d; }catch(e){ return null; }
   },
-  async people(){ return this.api("profiles?select=id,email,display_name&order=display_name"); },
+  peopleCache: [],
+  async people(){
+    const rows=await this.api("profiles?select=id,email,display_name&order=display_name");
+    // The cache only feeds name suggestions: never let an empty or failed
+    // response wipe names we already know about mid-interaction.
+    if(Array.isArray(rows)&&rows.length) this.peopleCache=rows;
+    return Array.isArray(rows)?rows:[];
+  },
+  /* Fire-and-forget refresh so name suggestions are warm without blocking any UI */
+  warmPeople(){ if(this.signedIn()){ this.people().catch(()=>{}); } return this.peopleCache; },
   async delegate(task,assigneeId,note,due){
     const rows=await this.api("cloud_tasks",{method:"POST",body:{
       owner_id:this.me().id, assignee_id:assigneeId, title:task.title,
@@ -1879,6 +1918,7 @@ function fileToImage(f){
 }
 function openSmartCapture(prefill){
   if(!CloudService.signedIn()){ toast("Sign in first — Data & settings → Cloud","warn"); go("settings"); return; }
+  CloudService.warmPeople();
   $("#modalHost").innerHTML=`<div class="overlay" id="ovSmart"><div class="modal" style="max-width:680px">
     <h2><span class="eyebrow">✨ Smart capture</span></h2>
     <p style="color:var(--muted);font-size:12.5px;margin-bottom:10px">Paste an email, WhatsApp message or notes — or attach screenshots — and the tasks, dates and people will be extracted for your review.</p>
@@ -1918,6 +1958,7 @@ function renderSmartResults(out){
   if(!tasks.length){ $("#scResults").innerHTML=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No actionable tasks found in that material.</p>`; return; }
   $("#scResults").innerHTML=`
     <div class="grouphead" style="margin-top:12px"><span class="eyebrow">Proposed tasks — untick any you don't want</span></div>
+    ${peopleDatalist("scPeopleList")}
     ${tasks.map((t,i)=>`
     <div class="card" style="margin-bottom:8px;padding:10px 12px">
       <div style="display:flex;gap:10px;align-items:flex-start">
@@ -1932,8 +1973,11 @@ function renderSmartResults(out){
             <div class="field" style="margin:0"><label>Context</label><select id="scC${i}"><option value="">—</option>${AppState.data.contexts.map(c=>`<option ${t.context===c?"selected":""}>${esc(c)}</option>`).join("")}</select></div>
             <div class="field" style="margin:0"><label>Project</label><select id="scPr${i}"><option value="">—</option>${projs.map(p=>`<option value="${esc(p.id)}" ${t.project===p.name?"selected":""}>${esc(p.name)}</option>`).join("")}</select></div>
           </div>
-          ${t.person?`<div class="mono" style="font-size:10.5px;color:var(--faint);margin-top:6px">Person: ${esc(t.person)} · suggested: ${esc(t.suggested_status||"inbox")}</div>`:""}
-          ${t.description?`<div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(t.description)}</div>`:""}
+          <div class="field" style="margin:8px 0 0"><label>Delegated to</label>
+            <input id="scPer${i}" list="scPeopleList" autocomplete="off" placeholder="Any name — leave blank to keep it yourself" value="${esc(t.person||"")}"></div>
+          <div class="field" style="margin:8px 0 0"><label>Notes</label>
+            <textarea id="scN${i}" rows="2" placeholder="Anything worth keeping with this task">${esc(t.description||t.notes||"")}</textarea></div>
+          ${t.suggested_status?`<div class="mono" style="font-size:10.5px;color:var(--faint);margin-top:6px">Suggested: ${esc(t.suggested_status)}</div>`:""}
         </div>
       </div>
     </div>`).join("")}
@@ -1958,24 +2002,30 @@ function renderSmartResults(out){
     b.textContent="Added ✓"; b.disabled=true; toast("Payment added","ok");
   });
   $("#scAdd").onclick=()=>{
-    let n=0;
+    let n=0, delegable=0;
     tasks.forEach((t,i)=>{
       if(!$("#scChk"+i)||!$("#scChk"+i).checked) return;
       const title=$("#scT"+i).value.trim(); if(!title) return;
       const due=$("#scD"+i).value||null;
-      const status=(t.suggested_status==="waiting")?"waiting":(due?"next":"inbox");
+      const person=($("#scPer"+i)?$("#scPer"+i).value:"").trim();
+      const notes=($("#scN"+i)?$("#scN"+i).value:"").trim();
+      // A name in the delegation box is decisive: the task is waiting on someone
+      const status=person?"waiting":(t.suggested_status==="waiting")?"waiting":(due?"next":"inbox");
       const task=TaskService.create({
-        title:title, description:t.description||"", status:status,
+        title:title, description:"", notes:notes, status:status,
         clarified:status!=="inbox",
         context:$("#scC"+i).value||null, projectId:$("#scPr"+i).value||null,
         priority:$("#scP"+i).value||"normal", dueDate:due,
         tags:["smart-capture"]
       });
-      if(status==="waiting"&&t.person){ task.waitingFor={person:t.person,delegatedDate:todayStr(),expectedDate:due,followUpDate:null,lastFollowUp:null,organisation:""}; }
+      if(status==="waiting"&&person){
+        task.waitingFor={person:person,delegatedDate:todayStr(),expectedDate:due,followUpDate:null,lastFollowUp:null,organisation:""};
+        if(matchAccount(person)) delegable++;
+      }
       n++;
     });
     markDirty(); closeModal(); render();
-    toast(n?n+" task"+(n===1?"":"s")+" added":"Nothing selected",n?"ok":"warn");
+    toast(n?n+" task"+(n===1?"":"s")+" added"+(delegable?" — "+delegable+" can also be sent to their Tasks app from the task's Delegate button":""):"Nothing selected",n?"ok":"warn");
   };
 }
 const FXService = {
@@ -2169,31 +2219,72 @@ async function openLedgerModal(){
 }
 function openDelegateModal(taskId){
   const t=TaskService.get(taskId); if(!t) return;
-  CloudService.people().then(people=>{
-    const meDel=CloudService.me().id;
-    const others=people.filter(p=>!p.archived).sort((a,b)=>(a.id===meDel?-1:0)-(b.id===meDel?-1:0));
-    if(!others.length){ toast("No people have accounts yet","warn"); return; }
+  const draw=()=>{
+    const accounts=accountPeople();
+    const meDel=CloudService.signedIn()?CloudService.me().id:null;
     $("#modalHost").innerHTML=`<div class="overlay" id="ovDel"><div class="modal" style="max-width:480px">
       <h2><span class="eyebrow">Delegate task</span></h2>
       <p style="font-size:13px;margin-bottom:10px"><b>${esc(t.title)}</b></p>
-      <div class="field"><label>Send to</label><select id="dlPerson">${others.map(p=>`<option value="${esc(p.id)}" data-email="${esc(p.email)}">${esc(p.display_name||p.email)}${p.id===meDel?" (you — your Tasks app)":""}</option>`).join("")}</select></div>
-      <div class="field"><label>Note for them</label><textarea id="dlNote" rows="3">${esc(t.description||"")}</textarea></div>
+      <div class="field"><label>Delegate to</label>
+        <input id="dlPerson" list="dlPeopleList" autocomplete="off" placeholder="Type any name — they do not need an account"
+          value="${esc(t.waitingFor?.person||"")}">
+        ${peopleDatalist("dlPeopleList")}
+        <div class="mono" id="dlHint" style="font-size:10.5px;color:var(--faint);margin-top:4px"></div></div>
+      <div class="field"><label>Note for them</label><textarea id="dlNote" rows="3">${esc(t.description||t.notes||"")}</textarea></div>
       <div class="field"><label>Due date</label><input id="dlDue" type="date" value="${esc(t.dueDate||"")}"></div>
-      <div class="modalfoot"><button class="btn" id="dlCancel">Cancel</button><button class="btn primary" id="dlSend">Send task</button></div>
+      <div class="modalfoot"><button class="btn" id="dlCancel">Cancel</button><button class="btn primary" id="dlSend">Delegate</button></div>
     </div></div>`;
-    $("#dlCancel").onclick=closeModal;
-    $("#dlSend").onclick=async()=>{
-      const sel=$("#dlPerson"); const email=sel.options[sel.selectedIndex].dataset.email;
-      try{
-        const row=await CloudService.delegate(t,sel.value,$("#dlNote").value.trim(),$("#dlDue").value||null);
-        TaskService.update(t.id,{status:"waiting",clarified:true,
-          waitingFor:Object.assign({},t.waitingFor||{},{person:email,delegatedDate:todayStr(),expectedDate:$("#dlDue").value||t.waitingFor?.expectedDate||null})});
-        const t2=TaskService.get(t.id); t2.cloud={id:row.id,assignee:email,status:row.status,comments:0}; markDirty();
-        closeModal(); render(); toast("Task sent to "+email,"ok");
-        PushService.notify(sel.value,"New task from "+CloudService.me().email,t.title,"./tasks/");
-      }catch(err){ toast(err.message,"warn"); }
+    const inp=$("#dlPerson"), hint=$("#dlHint"), btn=$("#dlSend");
+    const refresh=()=>{
+      const name=inp.value.trim();
+      const acct=matchAccount(name);
+      if(!name){ hint.textContent="Any name works — accounts also get the task in their Tasks app."; btn.textContent="Delegate"; return; }
+      if(acct&&CloudService.signedIn()){
+        hint.style.color="var(--ok)";
+        hint.textContent=(acct.id===meDel?"That is you — it will land in your own Tasks app.":"Has an app account — the task will be sent to their Tasks app.");
+        btn.textContent="Send task";
+      } else {
+        hint.style.color="var(--faint)";
+        hint.textContent="No app account for that name — tracked here under Waiting for.";
+        btn.textContent="Record as waiting";
+      }
     };
-  }).catch(err=>toast(err.message,"warn"));
+    inp.addEventListener("input",refresh); refresh();
+    $("#dlCancel").onclick=closeModal;
+    btn.onclick=async()=>{
+      const name=inp.value.trim();
+      if(!name){ toast("Enter a name","warn"); inp.focus(); return; }
+      const note=$("#dlNote").value.trim(), due=$("#dlDue").value||null;
+      const acct=matchAccount(name);
+      const wf=Object.assign({},t.waitingFor||{},{person:name,delegatedDate:todayStr(),
+        expectedDate:due||t.waitingFor?.expectedDate||null});
+      if(acct&&CloudService.signedIn()){
+        btn.disabled=true;
+        try{
+          const row=await CloudService.delegate(t,acct.id,note,due);
+          TaskService.update(t.id,{status:"waiting",clarified:true,notes:note||t.notes,waitingFor:wf});
+          const t2=TaskService.get(t.id); t2.cloud={id:row.id,assignee:acct.email,status:row.status,comments:0}; markDirty();
+          closeModal(); render(); toast("Task sent to "+acct.email,"ok");
+          PushService.notify(acct.id,"New task from "+CloudService.me().email,t.title,"./tasks/");
+        }catch(err){ btn.disabled=false; toast(err.message,"warn"); }
+        return;
+      }
+      // No account: still a first-class delegation, tracked locally under Waiting for
+      TaskService.update(t.id,{status:"waiting",clarified:true,notes:note||t.notes,waitingFor:wf});
+      closeModal(); render(); toast("Waiting on "+name,"ok");
+    };
+  };
+  draw();
+  // Refresh account list in the background, then redraw so suggestions are current
+  if(CloudService.signedIn()){
+    const sig=peopleNames().join("|");
+    CloudService.people().then(()=>{
+      if(peopleNames().join("|")===sig) return;          // nothing new to show
+      if(!$("#dlPerson")) return;                         // modal already closed
+      const v=$("#dlPerson").value; draw();
+      $("#dlPerson").value=v; $("#dlPerson").dispatchEvent(new Event("input"));
+    }).catch(()=>{});
+  }
 }
 
 async function adminCall(body){
@@ -3347,6 +3438,7 @@ UI.taskDrawer = function(id){
   const projOpts=ProjectService.all().map(p=>`<option value="${esc(p.id)}" ${t.projectId===p.id?"selected":""}>${esc(p.name)}</option>`).join("");
   const areaOpts=AppState.data.areas.map(a=>`<option value="${esc(a.id)}" ${t.areaId===a.id?"selected":""}>${esc(a.name)}</option>`).join("");
   const w=t.waitingFor||{};
+  CloudService.warmPeople();
   const par=TaskService.parentOf(t);
   const kids=TaskService.children(id);
   const kidsDone=kids.filter(k=>k.status==="completed").length;
@@ -3385,7 +3477,7 @@ UI.taskDrawer = function(id){
     ${t.scheduledDate?`<div style="margin:2px 0 6px"><button class="btn sm" id="tdOutlook">Add to Outlook calendar (rodney@mullway.com)</button></div>`:""}
     <div class="grouphead"><span class="eyebrow">Waiting for</span></div>
     <div class="fieldrow">
-      <div class="field"><label>Person</label><input id="tdWPerson" value="${esc(w.person||"")}"></div>
+      <div class="field"><label>Person</label><input id="tdWPerson" list="tdPeopleList" autocomplete="off" placeholder="Any name" value="${esc(w.person||"")}">${peopleDatalist("tdPeopleList")}</div>
       <div class="field"><label>Organisation</label><input id="tdWOrg" value="${esc(w.organisation||"")}"></div>
     </div>
     <div class="fieldrow">
@@ -3406,7 +3498,7 @@ UI.taskDrawer = function(id){
     <div class="mono" style="font-size:10.5px;color:var(--faint);margin-top:12px">Created ${esc(fmtDT(t.createdAt))} · Updated ${esc(fmtDT(t.updatedAt))}${t.completedAt?" · Completed "+esc(fmtDT(t.completedAt)):""}</div>
     <div class="modalfoot">
       <div class="left"><button class="btn danger sm" id="tdDelete">Delete</button>
-      <button class="btn sm" id="tdConvert">Convert to project</button>${kids.length?"":`<button class="btn sm" id="tdSubOf">${par?"Move to another task":"Make subtask of…"}</button>`}${CloudService.signedIn()&&!t.cloud?`<button class="btn sm" id="tdDelegate">Delegate…</button>`:""}${t.cloud?`<span class="mono" style="font-size:10.5px;color:var(--accent);align-self:center">☁ ${esc(t.cloud.assignee)} · ${esc(t.cloud.status.replace("_"," "))}</span>`:""}</div>
+      <button class="btn sm" id="tdConvert">Convert to project</button>${kids.length?"":`<button class="btn sm" id="tdSubOf">${par?"Move to another task":"Make subtask of…"}</button>`}${!t.cloud?`<button class="btn sm" id="tdDelegate">Delegate…</button>`:""}${t.cloud?`<span class="mono" style="font-size:10.5px;color:var(--accent);align-self:center">☁ ${esc(t.cloud.assignee)} · ${esc(t.cloud.status.replace("_"," "))}</span>`:""}</div>
       <button class="btn sm ${t.status==="completed"?"":"primary"}" id="tdComplete">${t.status==="completed"?"Reopen":"Complete"}</button>
       <button class="btn primary sm" id="tdSave">Save</button>
     </div>

@@ -788,6 +788,132 @@ function extractObj(src, name){
     assert(TS.children(shop.id).some(k=>k.status==='completed'), 'ticking a subtask in the drawer completes it');
   }
 
+  console.log('--- Delegation accepts any name, not just app accounts ---');
+  {
+    const { JSDOM } = require('jsdom');
+    const gtdHtml = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    assert(!gtdHtml.includes('No people have accounts yet'), 'the "no accounts" dead end is gone');
+    assert(gtdHtml.includes('id="dlPerson" list="dlPeopleList"'), 'delegate modal uses a free-text input with suggestions');
+    assert(!/<select id="dlPerson"/.test(gtdHtml), 'the fixed people dropdown is removed');
+    assert(gtdHtml.includes('id="tdWPerson" list="tdPeopleList"'), 'drawer person field offers the same suggestions');
+
+    const dom = new JSDOM(gtdHtml, {runScripts:'dangerously', url:'https://example.test/',
+      beforeParse(w){ w.fetch=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve('[]'),json:()=>Promise.resolve({})}); }});
+    await new Promise(r=>setTimeout(r,600));
+    const w=dom.window, d=w.document;
+    w.eval('AppState').data = w.eval('demoData')();
+    const TS=w.eval('TaskService');
+    const CS=w.eval('CloudService');
+    CS.session={access_token:'AT', user:{id:'me', email:'rodney@x.com'}};
+    CS.peopleCache=[{id:'u1', email:'luke@x.com', display_name:'Luke'}];
+
+    // name suggestions blend accounts with names already used in the app
+    TS.create({title:'Old delegated thing', status:'waiting', waitingFor:{person:'Mark at the farm'}});
+    const names = w.eval('peopleNames()');
+    assert(names.includes('Luke'), 'account holders suggested');
+    assert(names.includes('Mark at the farm'), 'names used before are suggested even without an account');
+    assert(w.eval('matchAccount("luke@x.com")') && w.eval('matchAccount("Luke")'), 'account matched by name or email');
+    assert(w.eval('matchAccount("Mark at the farm")') === null, 'a non-account name matches nothing, and that is fine');
+
+    // CLICK-THROUGH: delegate to somebody with no account
+    const chore = TS.create({title:'Fix the borehole pump', status:'next', clarified:true});
+    w.eval('openDelegateModal')(chore.id);
+    await new Promise(r=>setTimeout(r,200));
+    const inp = d.getElementById('dlPerson');
+    assert(inp && inp.tagName === 'INPUT', 'delegate field is a free-text input');
+    assert(d.getElementById('dlPeopleList'), 'suggestion list rendered');
+    inp.value = 'Tendai the plumber';
+    inp.dispatchEvent(new w.Event('input', {bubbles:true}));
+    await new Promise(r=>setTimeout(r,80));
+    assert(/No app account/.test(d.getElementById('dlHint').textContent), 'the modal says plainly it will be tracked locally');
+    assert(/waiting/i.test(d.getElementById('dlSend').textContent), 'the button relabels to match what will happen');
+    d.getElementById('dlNote').value = 'Bring the 3 inch fittings';
+    d.getElementById('dlDue').value = '2026-08-14';
+    d.getElementById('dlSend').click();
+    await new Promise(r=>setTimeout(r,200));
+    const done = TS.get(chore.id);
+    assert(done.status === 'waiting', 'task moves to Waiting for');
+    assert(done.waitingFor.person === 'Tendai the plumber', 'the typed name is recorded verbatim');
+    assert(done.waitingFor.expectedDate === '2026-08-14', 'due date carried onto the waiting record');
+    assert(done.notes === 'Bring the 3 inch fittings', 'the note is kept on the task');
+    assert(!done.cloud, 'no cloud row created for someone without an account');
+
+    // an account holder still gets the real cloud send
+    let posted = null;
+    CS.delegate = async (task, assigneeId, note, due) => { posted={assigneeId, note, due}; return {id:'ct9', status:'open'}; };
+    w.eval('PushService').notify = ()=>{};
+    const chore2 = TS.create({title:'Review the switch quotes', status:'next', clarified:true});
+    w.eval('openDelegateModal')(chore2.id);
+    await new Promise(r=>setTimeout(r,200));
+    const inp2 = d.getElementById('dlPerson');
+    inp2.value = 'Luke';
+    inp2.dispatchEvent(new w.Event('input', {bubbles:true}));
+    await new Promise(r=>setTimeout(r,80));
+    assert(/app account/.test(d.getElementById('dlHint').textContent), 'a matching account is recognised');
+    assert(/Send task/.test(d.getElementById('dlSend').textContent), 'button offers the real send');
+    d.getElementById('dlSend').click();
+    await new Promise(r=>setTimeout(r,250));
+    assert(posted && posted.assigneeId === 'u1', 'cloud delegation still routes to the account id');
+    assert(TS.get(chore2.id).cloud && TS.get(chore2.id).cloud.assignee === 'luke@x.com', 'cloud link recorded');
+
+    // the drawer offers Delegate even when not signed in to the cloud
+    CS.session = null;
+    w.eval('UI').taskDrawer(TS.create({title:'Chase the fencing quote', status:'next'}).id);
+    await new Promise(r=>setTimeout(r,150));
+    assert(d.getElementById('tdDelegate'), 'Delegate offered offline — local delegation needs no account');
+  }
+
+  console.log('--- Smart capture: notes and free-text delegation ---');
+  {
+    const { JSDOM } = require('jsdom');
+    const gtdHtml = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    const dom = new JSDOM(gtdHtml, {runScripts:'dangerously', url:'https://example.test/',
+      beforeParse(w){ w.fetch=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve('[]'),json:()=>Promise.resolve({})}); }});
+    await new Promise(r=>setTimeout(r,600));
+    const w=dom.window, d=w.document;
+    w.eval('AppState').data = w.eval('demoData')();
+    w.eval('CloudService').session={access_token:'AT', user:{id:'me', email:'rodney@x.com'}};
+    w.eval('CloudService').peopleCache=[{id:'u1', email:'luke@x.com', display_name:'Luke'}];
+    const TS=w.eval('TaskService');
+    const before = TS.all().length;
+
+    w.eval('openSmartCapture')();
+    await new Promise(r=>setTimeout(r,150));
+    w.eval('renderSmartResults')({summary:'', tasks:[
+      {title:'Send the ISO scope to the assessor', description:'They asked for it twice already', person:'Luke', suggested_status:'waiting', priority:'high', due_date:'2026-08-03'},
+      {title:'Order cattle dip', description:'Two drums', person:'Tapiwa at the farm', priority:'normal'},
+      {title:'Read the supplier questionnaire', description:'', priority:'low'}
+    ]});
+    await new Promise(r=>setTimeout(r,150));
+    const html = d.getElementById('scResults').innerHTML;
+    assert(html.includes('Delegated to'), 'each proposed task has a delegation field');
+    assert(html.includes('Notes'), 'each proposed task has a notes field');
+    assert(d.getElementById('scPeopleList'), 'name suggestions available in the review list');
+    assert(d.getElementById('scPer0').value === 'Luke', 'a person the analysis found is pre-filled');
+    assert(d.getElementById('scPer1').value === 'Tapiwa at the farm', 'a name with no account is pre-filled just the same');
+    assert(d.getElementById('scPer2').value === '', 'nothing invented where no person was found');
+    assert(d.getElementById('scN0').value === 'They asked for it twice already', 'notes pre-filled from the analysis');
+    assert(d.getElementById('scN0').tagName === 'TEXTAREA', 'notes are editable, not static text');
+
+    // edit before accepting: retype a name and a note
+    d.getElementById('scPer2').value = 'Brandon';
+    d.getElementById('scN2').value = 'Only the security annex matters';
+    d.getElementById('scAdd').click();
+    await new Promise(r=>setTimeout(r,200));
+    const added = TS.all().slice(before);
+    assert(added.length === 3, 'all three proposed tasks added');
+    const iso = added.find(t=>/ISO scope/.test(t.title));
+    assert(iso.status === 'waiting' && iso.waitingFor.person === 'Luke', 'account holder recorded as a delegation');
+    assert(iso.notes === 'They asked for it twice already', 'notes saved onto the task');
+    assert(iso.waitingFor.expectedDate === '2026-08-03', 'due date carried onto the waiting record');
+    const dip = added.find(t=>/cattle dip/.test(t.title));
+    assert(dip.status === 'waiting' && dip.waitingFor.person === 'Tapiwa at the farm', 'a name with no account still creates a real delegation');
+    const quest = added.find(t=>/questionnaire/.test(t.title));
+    assert(quest.status === 'waiting' && quest.waitingFor.person === 'Brandon', 'a name typed during review is decisive over the suggested status');
+    assert(quest.notes === 'Only the security annex matters', 'a note typed during review is kept');
+    assert(added.every(t=>(t.tags||[]).includes('smart-capture')), 'provenance retained');
+  }
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
