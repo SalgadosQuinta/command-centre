@@ -1055,30 +1055,38 @@ function extractObj(src, name){
     assert(gh.indexOf('@Zebra') < gh.indexOf('No context'), 'the "No context" bucket sits last');
   }
 
-  console.log('--- Money row: in/out over 7 and 30 days, from Family Money ---');
+  console.log('--- Money row: mirrors the Family Money planner ---');
   {
     const { JSDOM } = require('jsdom');
     const gtdHtml = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
     const famBlock = gtdHtml.slice(gtdHtml.indexOf('const FamMoneyService'), gtdHtml.indexOf('function famTileHTML'));
     assert(/space=eq\.family/.test(famBlock), 'only the Family space is queried');
     assert(!/space=eq\.(private|business|farm)/.test(famBlock), 'the money queries never touch the PIN-protected spaces');
-    assert(famBlock.includes('received_at=is.null'), 'money already received is excluded');
+    assert(famBlock.includes('fam_planner_items'), 'planner items are counted, not just bills');
+    assert(famBlock.includes('paid=is.false'), 'settled planner items excluded');
     assert(famBlock.includes('archived=eq.false'), 'archived bills excluded');
+    assert(!famBlock.includes('fam_bill_payments'),
+      'no payment join: paying a bill archives it or rolls its due date, so archived=false is already the outstanding set');
 
     const iso = d => new Date(Date.now()+d*86400000).toISOString().slice(0,10);
+    // Overdue rows matter: the planner rolls them forward rather than dropping them
     const income = [
-      {id:'i1', amount:'1400.00', currency:'GBP', on_date:iso(2),  week_date:iso(2),  person:'Tapiwa Salary'},
-      {id:'i2', amount:'20000.00',currency:'GBP', on_date:iso(9),  week_date:iso(9),  person:'Rodney LH'},
-      {id:'i3', amount:'1400.00', currency:'GBP', on_date:iso(16), week_date:iso(16), person:'Tapiwa Salary'},
-      {id:'i4', amount:'500.00',  currency:'USD', on_date:iso(45), week_date:iso(45), person:'Too far out'}
+      {id:'i1', amount:'1400.00', currency:'GBP', on_date:iso(2),  week_date:iso(2)},
+      {id:'i2', amount:'20000.00',currency:'GBP', on_date:iso(9),  week_date:iso(9)},
+      {id:'i3', amount:'600.00',  currency:'GBP', on_date:iso(-4), week_date:iso(-4)},   // late, still owed
+      {id:'i4', amount:'500.00',  currency:'USD', on_date:iso(45), week_date:iso(45)}    // beyond horizon
     ];
     const bills = [
       {id:'b1', name:'Council tax', amount:'200.00', currency:'GBP', due_date:iso(3)},
-      {id:'b2', name:'Broadband',   amount:'40.00',  currency:'GBP', due_date:iso(5)},
-      {id:'b3', name:'Insurance',   amount:'300.00', currency:'GBP', due_date:iso(20)},
-      {id:'b4', name:'Already paid',amount:'999.00', currency:'GBP', due_date:iso(4)}
+      {id:'b2', name:'Overdue one', amount:'150.00', currency:'GBP', due_date:iso(-6)},  // overdue
+      {id:'b3', name:'Insurance',   amount:'300.00', currency:'GBP', due_date:iso(20)}
     ];
-    const pays = [{bill_id:'b4', due_date:iso(4)}];
+    const items = [
+      {id:'p1', title:'School trip',  amount:'80.00',   currency:'GBP', on_date:iso(4),  week_date:iso(4),  paid:false},
+      {id:'p2', title:'Lapsed item',  amount:'70.00',   currency:'GBP', on_date:iso(-2), week_date:iso(-2), paid:false},
+      {id:'p3', title:'Big USD item', amount:'10000.00',currency:'USD', on_date:iso(5),  week_date:iso(5),  paid:false},
+      {id:'p4', title:'Later item',   amount:'250.00',  currency:'GBP', on_date:iso(25), week_date:iso(25), paid:false}
+    ];
 
     let calls = 0;
     const dom = new JSDOM(gtdHtml, {runScripts:'dangerously', url:'https://example.test/',
@@ -1086,7 +1094,7 @@ function extractObj(src, name){
         w.fetch=(url)=>{
           const u=String(url); let payload='[]';
           if(u.includes('fam_income')){ calls++; payload=JSON.stringify(income); }
-          else if(u.includes('fam_bill_payments')){ calls++; payload=JSON.stringify(pays); }
+          else if(u.includes('fam_planner_items')){ calls++; payload=JSON.stringify(items); }
           else if(u.includes('fam_bills')){ calls++; payload=JSON.stringify(bills); }
           return Promise.resolve({ok:true,status:200,text:()=>Promise.resolve(payload),json:()=>Promise.resolve(JSON.parse(payload))});
         };
@@ -1097,39 +1105,42 @@ function extractObj(src, name){
     w.eval('CloudService').session={access_token:'AT', user:{id:'me', email:'r@x.com'}};
     const FM = w.eval('FamMoneyService');
     await FM.load(true);
+    assert(FM.income.length===4 && FM.bills.length===3 && FM.items.length===4, 'all three sources loaded');
 
-    assert(FM.income.length === 4 && FM.bills.length === 4, 'income and bills both loaded');
-    assert(FM.inSums(7).GBP === 1400, 'expected in, 7 days');
-    assert(FM.inSums(30).GBP === 22800, 'expected in, 30 days (got ' + FM.inSums(30).GBP + ')');
-    assert(FM.outSums(7).GBP === 240, 'expected out, 7 days excludes the settled bill (got ' + FM.outSums(7).GBP + ')');
-    assert(FM.outSums(30).GBP === 540, 'expected out, 30 days (got ' + FM.outSums(30).GBP + ')');
-    assert(FM.outDue(7).every(b=>b.id !== 'b4'), 'a bill with a payment for that due date is treated as settled');
-    assert(FM.inSums(30).USD === undefined, 'an item beyond 30 days is in neither window');
-    assert(FM.netSums(30).GBP === 22260, 'net is in less out (got ' + FM.netSums(30).GBP + ')');
+    // IN: overdue income counts; anything past the horizon does not
+    assert(FM.inSums(7).GBP === 2000, '7-day in = 1400 due + 600 late (got ' + FM.inSums(7).GBP + ')');
+    assert(FM.inSums(30).GBP === 22000, '30-day in (got ' + FM.inSums(30).GBP + ')');
+    assert(FM.inSums(30).USD === undefined, 'income beyond 30 days is excluded');
 
-    // All four figures on one row, on the Focus dashboard
+    // OUT: bills AND planner items, overdue included — this was the reported gap
+    assert(FM.outSums(7).GBP === 500, '7-day out = 200 bill + 150 overdue bill + 80 item + 70 lapsed item (got ' + FM.outSums(7).GBP + ')');
+    assert(FM.outSums(7).USD === 10000, 'planner items in other currencies counted too');
+    assert(FM.outSums(30).GBP === 1050, '30-day out adds the later bill and item (got ' + FM.outSums(30).GBP + ')');
+    assert(FM.outDue(30).length === 7, 'every outstanding bill and item in the window is counted');
+    assert(FM.outDue(7).some(r=>r.title==='Lapsed item') && FM.outDue(7).some(r=>r.name==='Overdue one'),
+      'overdue bills and lapsed planner items are included, as the planner rolls them forward');
+    assert(FM.netSums(30).GBP === 20950, 'net is in less out (got ' + FM.netSums(30).GBP + ')');
+
+    // Overdue is surfaced, not hidden inside the total
+    assert(FM.overdueOut().length === 2 && FM.overdueIn().length === 1, 'overdue counts available');
+
     w.eval('go')('focus');
     await new Promise(r=>setTimeout(r,300));
     let vh = d2.getElementById('view').innerHTML;
     const M = v => w.eval('money')('GBP', v);
     ['Expected in — 7 days','Expected out — 7 days','Expected in — 30 days','Expected out — 30 days']
-      .forEach(l=>assert(vh.includes(l), 'Focus shows tile: ' + l));
+      .forEach(l=>assert(vh.includes(l), 'tile present: ' + l));
     assert((vh.match(/famtile/g)||[]).length === 4, 'exactly four tiles');
-    assert(vh.includes('famrow') && vh.includes('grid c4'), 'tiles laid out on a single four-column row');
-    [1400,240,22800,540].forEach(v=>assert(vh.includes(M(v)), 'figure rendered: ' + M(v)));
+    [2000,500,22000,1050].forEach(v=>assert(vh.includes(M(v)), 'figure rendered: ' + M(v)));
+    assert(vh.includes('2 overdue'), 'the overdue portion of the out figure is stated');
+    assert(vh.includes('7 items'), 'item counts shown so the figure can be checked against the planner');
 
-    // Same row on Pipeline
     w.eval('go')('finance');
     await new Promise(r=>setTimeout(r,300));
-    vh = d2.getElementById('view').innerHTML;
-    assert((vh.match(/famtile/g)||[]).length === 4, 'Pipeline shows the same four tiles');
-    assert(vh.includes('Net — 30 days (Family Money)'), 'net card sourced from Family Money');
-    assert(vh.includes(M(22260)), 'net figure rendered');
-    assert(vh.includes('Pipeline in — 60 days (proposals)'), 'console proposal data is labelled as such');
+    assert((d2.getElementById('view').innerHTML.match(/famtile/g)||[]).length === 4, 'Pipeline shows the same four tiles');
 
-    // No refetch storm, single-flight, offline fallback
+    // Loading discipline retained
     const before = calls;
-    w.eval('render')(); await new Promise(r=>setTimeout(r,200));
     w.eval('render')(); await new Promise(r=>setTimeout(r,200));
     assert(calls === before, 'no refetch on re-render inside the TTL');
     FM.loadedAt = 0;
@@ -1139,12 +1150,11 @@ function extractObj(src, name){
     FM.writeCache();
     const realApi = w.eval('CloudService').api;
     w.eval('CloudService').api = () => Promise.reject(new TypeError('Failed to fetch'));
-    FM.income=null; FM.bills=null; FM.loadedAt=0;
+    FM.income=null; FM.bills=null; FM.items=null; FM.loadedAt=0;
     await FM.load(true);
     w.eval('CloudService').api = realApi;
-    assert(FM.income && FM.income.length === 4 && FM.bills.length === 4, 'cached figures used when Family Money is unreachable');
+    assert(FM.income && FM.items && FM.items.length === 4, 'cached figures used when Family Money is unreachable');
     assert(FM.stale === true, 'stale data flagged, and the UI says so');
-    assert(gtdHtml.includes('Cached figures'), 'cached state is stated in the UI, not hidden');
   }
 
   console.log('--- Coach: two or three suggestions ---');

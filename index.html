@@ -1199,12 +1199,8 @@ function focusFinanceHTML(){
   if(!f) return "";
   if(financeLocked()) return `<div class="card" style="margin-bottom:16px"><h2 style="display:flex;justify-content:space-between;align-items:center"><span class="eyebrow">Finance</span><button class="btn sm" data-go="finance">Unlock</button></h2><div class="sub">Locked — open Finance to view</div></div>`;
   const tStr=todayStr();
-  const overdueOut=FamMoneyService.loaded()
-    ? (FamMoneyService.bills||[]).filter(b=>b.due_date<tStr)
-    : f.outgoings.filter(x=>!x.paid&&x.dueDate<tStr);
-  const lateIn=FamMoneyService.loaded()
-    ? (FamMoneyService.income||[]).filter(x=>(x.on_date||x.week_date)<tStr)
-    : f.income.filter(x=>x.status!=="received"&&x.expectedDate<tStr);
+  const overdueOut=FamMoneyService.loaded()?FamMoneyService.overdueOut():f.outgoings.filter(x=>!x.paid&&x.dueDate<tStr);
+  const lateIn=FamMoneyService.loaded()?FamMoneyService.overdueIn():f.income.filter(x=>x.status!=="received"&&x.expectedDate<tStr);
   return `<div style="margin-bottom:16px">
     <h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
       <span class="eyebrow">Money — Family space</span>
@@ -2958,40 +2954,50 @@ function money(cur,n){ const v=Math.round(n*100)/100; return esc(cur)+" "+(v<0?"
    unprotected dashboard here.
    ============================================================ */
 const FAMINC_TTL=120000;
+/* Mirrors the Family Money planner's own model of a period:
+   OUT = unpaid bills + unpaid planner items, IN = income not yet received.
+   Anything already past its date is still outstanding, so it counts too — the
+   planner rolls overdue items into the current week rather than dropping them,
+   and a figure that silently omitted them read far too low.
+   Bills need no payment join: paying one archives it (one-off) or rolls its
+   due_date to the next occurrence, so archived=false IS the outstanding set.
+   Not included: scheduled debt repayments. Planner items frequently stand in
+   for those (they carry debt_id), so adding the debt schedule on top would
+   double-count. See DOCS. */
+const FAMINC_TTL_MS=FAMINC_TTL;
 const FamMoneyService={
-  income:null, bills:null, paidKeys:null, loadedAt:0, inflight:null, stale:false, error:null,
-  ckey(){ return "gtdcc-fammoney:"+((CloudService.session&&CloudService.session.user&&CloudService.session.user.id)||"anon"); },
+  income:null, bills:null, items:null, loadedAt:0, inflight:null, stale:false, error:null,
+  ckey(){ return "gtdcc-fammoney2:"+((CloudService.session&&CloudService.session.user&&CloudService.session.user.id)||"anon"); },
   readCache(){
     try{ const r=JSON.parse(localStorage.getItem(this.ckey())||"null");
-      if(r&&Array.isArray(r.income)&&Array.isArray(r.bills)){
-        this.income=r.income; this.bills=r.bills; this.paidKeys=r.paidKeys||[]; this.stale=true; return true; } }catch(e){}
+      if(r&&Array.isArray(r.income)&&Array.isArray(r.bills)&&Array.isArray(r.items)){
+        this.income=r.income; this.bills=r.bills; this.items=r.items; this.stale=true; return true; } }catch(e){}
     return false;
   },
   writeCache(){
     try{ localStorage.setItem(this.ckey(),JSON.stringify(
-      {at:Date.now(),income:this.income,bills:this.bills,paidKeys:this.paidKeys})); }catch(e){}
+      {at:Date.now(),income:this.income,bills:this.bills,items:this.items})); }catch(e){}
   },
   async load(force){
     if(!CloudService.signedIn()) return null;
     if(this.inflight) return this.inflight;                       // single-flight
-    if(!force && this.income && Date.now()-this.loadedAt<FAMINC_TTL) return this;
-    const from=todayStr(), to=addDays(from,30);
+    if(!force && this.income && Date.now()-this.loadedAt<FAMINC_TTL_MS) return this;
+    const to=addDays(todayStr(),30);
     this.inflight=(async()=>{
       try{
-        const [inc,bills,pays]=await Promise.all([
+        const [inc,bills,items]=await Promise.all([
           CloudService.api("fam_income?select=id,amount,currency,on_date,week_date,person,note"+
             "&space=eq.family&received_at=is.null"+
-            "&or=(on_date.lte."+to+",on_date.is.null)&order=on_date",{timeoutMs:7000}),
+            "&or=(on_date.lte."+to+",week_date.lte."+to+")&order=on_date",{timeoutMs:8000}),
           CloudService.api("fam_bills?select=id,name,amount,currency,due_date,category"+
-            "&space=eq.family&archived=eq.false"+
-            "&due_date=gte."+from+"&due_date=lte."+to+"&order=due_date",{timeoutMs:7000}),
-          CloudService.api("fam_bill_payments?select=bill_id,due_date"+
-            "&space=eq.family&due_date=gte."+from,{timeoutMs:7000})
+            "&space=eq.family&archived=eq.false&due_date=lte."+to+"&order=due_date",{timeoutMs:8000}),
+          CloudService.api("fam_planner_items?select=id,title,amount,currency,on_date,week_date,paid,debt_id"+
+            "&space=eq.family&paid=is.false"+
+            "&or=(on_date.lte."+to+",week_date.lte."+to+")",{timeoutMs:8000})
         ]);
         this.income=Array.isArray(inc)?inc:[];
         this.bills=Array.isArray(bills)?bills:[];
-        // A bill instance is settled when a payment exists for that bill AND that due date
-        this.paidKeys=(Array.isArray(pays)?pays:[]).map(p=>p.bill_id+"|"+p.due_date);
+        this.items=Array.isArray(items)?items:[];
         this.loadedAt=Date.now(); this.stale=false; this.error=null;
         this.writeCache();
       }catch(e){
@@ -3002,15 +3008,17 @@ const FamMoneyService={
     })();
     return this.inflight;
   },
-  inDue(days){
-    const from=todayStr(), to=addDays(from,days);
-    return (this.income||[]).filter(r=>{ const d=r.on_date||r.week_date; return d&&d>=from&&d<=to; });
+  dateOfRow(r){ return r.on_date||r.week_date||r.due_date||null; },
+  /* Outstanding on or before the horizon, overdue included. */
+  through(rows,days){
+    const to=addDays(todayStr(),days);
+    return (rows||[]).filter(r=>{ const d=this.dateOfRow(r); return d&&d<=to; });
   },
-  outDue(days){
-    const from=todayStr(), to=addDays(from,days), paid=new Set(this.paidKeys||[]);
-    return (this.bills||[]).filter(b=>b.due_date&&b.due_date>=from&&b.due_date<=to
-      && !paid.has(b.id+"|"+b.due_date));
-  },
+  inDue(days){ return this.through(this.income,days); },
+  outDue(days){ return this.through(this.bills,days).concat(this.through(this.items,days)); },
+  overdueIn(){ const t=todayStr(); return (this.income||[]).filter(r=>this.dateOfRow(r)<t); },
+  overdueOut(){ const t=todayStr();
+    return (this.bills||[]).concat(this.items||[]).filter(r=>this.dateOfRow(r)<t); },
   sumOf(rows){
     const s={};
     rows.forEach(r=>{ const c=r.currency||"GBP"; s[c]=(s[c]||0)+(parseFloat(r.amount)||0); });
@@ -3024,12 +3032,10 @@ const FamMoneyService={
     Object.keys(o).forEach(c=>n[c]=(n[c]||0)-o[c]);
     return n;
   },
-  has(){ return (this.income&&this.income.length)||(this.bills&&this.bills.length); },
+  has(){ return (this.income&&this.income.length)||(this.bills&&this.bills.length)||(this.items&&this.items.length); },
   loaded(){ return this.income!==null; }
 };
-/* One tile of the money row. Out figures read as costs, so they take the
-   danger colour; the count line keeps the number honest about what is behind it. */
-function famTileHTML(label,rows,sums,neg){
+function famTileHTML(label,rows,sums,neg,overdueN){
   const ks=Object.keys(sums);
   return `<div class="card famtile">
     <div class="eyebrow">${esc(label)}</div>
@@ -3037,7 +3043,7 @@ function famTileHTML(label,rows,sums,neg){
       ? ks.map(c=>`<div class="mono famfig" style="color:${neg?"var(--danger)":"var(--text)"}">${money(c,sums[c])}</div>`).join("")
       : `<div class="mono famfig" style="color:var(--faint)">—</div>`}
     ${ks.length?FXService.approxHTML(sums):""}
-    <div class="mono famsub">${rows.length} item${rows.length===1?"":"s"}</div>
+    <div class="mono famsub">${rows.length} item${rows.length===1?"":"s"}${overdueN?` · <span style="color:var(--danger)">${overdueN} overdue</span>`:""}</div>
   </div>`;
 }
 /* Four figures across one row: in and out, 7 and 30 days, all from Family
@@ -3047,21 +3053,21 @@ function famMoneyRowHTML(){
     return `<div class="card"><div class="eyebrow">Money</div><div class="mono famsub">Sign in to see Family Money figures</div></div>`;
   if(!FamMoneyService.loaded())
     return `<div class="card"><div class="eyebrow">Money</div><div class="mono famsub">Loading Family Money…</div></div>`;
+  const oIn=FamMoneyService.overdueIn().length, oOut=FamMoneyService.overdueOut().length;
   return `<div class="grid c4 famrow">
-    ${famTileHTML("Expected in — 7 days",  FamMoneyService.inDue(7),   FamMoneyService.inSums(7),  false)}
-    ${famTileHTML("Expected out — 7 days", FamMoneyService.outDue(7),  FamMoneyService.outSums(7), true)}
-    ${famTileHTML("Expected in — 30 days", FamMoneyService.inDue(30),  FamMoneyService.inSums(30), false)}
-    ${famTileHTML("Expected out — 30 days",FamMoneyService.outDue(30), FamMoneyService.outSums(30),true)}
+    ${famTileHTML("Expected in — 7 days",  FamMoneyService.inDue(7),   FamMoneyService.inSums(7),  false, oIn)}
+    ${famTileHTML("Expected out — 7 days", FamMoneyService.outDue(7),  FamMoneyService.outSums(7), true,  oOut)}
+    ${famTileHTML("Expected in — 30 days", FamMoneyService.inDue(30),  FamMoneyService.inSums(30), false, oIn)}
+    ${famTileHTML("Expected out — 30 days",FamMoneyService.outDue(30), FamMoneyService.outSums(30),true,  oOut)}
   </div>${FamMoneyService.stale?`<div class="mono famsub" style="margin-top:2px">Cached figures — could not reach Family Money</div>`:""}`;
 }
 /* Refresh without looping: the TTL stops a second render refetching, and we
    only re-render when the data actually changed. */
 function refreshFamMoney(){
   if(!CloudService.signedIn()) return;
-  const before=JSON.stringify([FamMoneyService.income,FamMoneyService.bills,FamMoneyService.paidKeys]);
-  FamMoneyService.load().then(()=>{
-    if(JSON.stringify([FamMoneyService.income,FamMoneyService.bills,FamMoneyService.paidKeys])!==before) render();
-  }).catch(()=>{});
+  const sig=()=>JSON.stringify([FamMoneyService.income,FamMoneyService.bills,FamMoneyService.items]);
+  const before=sig();
+  FamMoneyService.load().then(()=>{ if(sig()!==before) render(); }).catch(()=>{});
 }
 function sumsHTML(s,emptyText){ const ks=Object.keys(s); return ks.length?ks.map(c=>`<div style="font-size:20px;font-weight:650;font-family:var(--mono)">${money(c,s[c])}</div>`).join(""):`<div style="font-size:20px;font-weight:650;font-family:var(--mono);color:var(--faint)">${emptyText||"—"}</div>`; }
 

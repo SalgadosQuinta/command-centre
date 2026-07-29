@@ -278,3 +278,36 @@ once past), and undated rows show "waiting 40d" — amber past a fortnight.
 **Lesson:** a card whose query is narrower than its heading will read as "you
 have nothing" rather than "nothing matched this filter". Either widen the query
 to match the heading or make the filter visible in it.
+
+## Money figures were far too low (gtdcc-v55)
+
+The in/out tiles disagreed badly with the Family Money planner. Three causes,
+found by reading the planner's own `weekTotals()` and `renderPlanner()`:
+
+1. **Planner items were ignored entirely.** `fam_planner_items` is a first-class
+   source of outgoings alongside `fam_bills` — 34 rows in the Family space,
+   worth more than the bills. Now included where `paid` is false.
+2. **Overdue rows were excluded.** The old query bounded on `due_date >= today`.
+   The planner never drops an overdue item; it rolls it into the current week.
+   Five overdue family bills worth £2,721 were invisible. The window is now
+   "outstanding on or before the horizon", with no lower bound, and the tile
+   states how many of those are overdue.
+3. **The bill payment join was wrong.** Paying a bill either archives it
+   (one-off) or rolls `due_date` to the next occurrence — so `archived=false`
+   already *is* the outstanding set. Joining `fam_bill_payments` on
+   `bill_id + due_date` added nothing and could wrongly exclude a bill.
+   Removed; `fam_bill_payments` is no longer fetched.
+
+Live effect: 30-day out went from £1,185 + $1,310 over 17 items to
+£7,011.81 + $13,310.32 over 56.
+
+**Deliberately still excluded: scheduled debt repayments** (`debtDueList` in
+family-money). Planner items routinely stand in for these — they carry
+`debt_id` and the planner's `debtDueCovered()` suppresses the schedule when one
+exists — so adding the debt schedule on top would double-count. Only two family
+debts carry a `min_payment` (£161.66 total). Revisit only with the covering
+logic ported across.
+
+**Lesson:** when mirroring a figure from another app, read that app's
+calculation rather than inferring it from the table names. Two of the three
+faults here were invisible from the schema alone.
