@@ -192,3 +192,37 @@ separate from the label.
 Note for tests: `toLocaleDateString("en-GB", {month:"short"})` renders September
 as **"Sept"**, not "Sep". Assert against `fmtDate()` output rather than
 hard-coded date strings.
+
+## Expected income comes from Family Money (gtdcc-v52)
+
+The console kept its own speculative income list, so "Expected in" never matched
+reality. It now reads `fam_income` from the shared Supabase project.
+
+`FamIncomeService` — fetches once per 2 minutes, single-flight, with a
+per-user localStorage cache so a failed fetch shows stale figures rather than
+nothing (flagged "cached" in the UI).
+
+Query: `space=eq.family&received_at=is.null&or=(on_date.lte.<today+30>,on_date.is.null)`.
+Dates use `on_date` falling back to `week_date`. RLS (`fam_can_see`) already
+permits it for the signed-in user — **no migration was needed**.
+
+**Family space only, deliberately.** Private and business income sits behind a
+PIN in Family Money; surfacing it on the console's unprotected Focus dashboard
+would widen where that data appears. Rodney chose Family only. If that ever
+changes, put a PIN on the card in the same commit.
+
+**Range toggle** 7d / 30d, shared by both surfaces, default 7, persisted under
+`gtdcc-famrange` and validated on read.
+
+Surfaces: the Focus dashboard finance card, and the first card on Pipeline.
+Pipeline's "Net" now compares real expected income against committed payments;
+its 60-day card is relabelled "Pipeline in" since that remains console-local
+proposal data.
+
+`focusFinanceHTML` now calls `FinanceService.data()` rather than reading
+`AppState.data.finance` directly — that block is created lazily, so the card
+silently vanished for anyone with no local finance records, which is now the
+normal case.
+
+**Test note:** the global `money()` renders "GBP 1400.00", not "£1,400" — the
+symbol version is a local inside the people view. Assert via `money()` itself.

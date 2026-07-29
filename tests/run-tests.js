@@ -1055,6 +1055,113 @@ function extractObj(src, name){
     assert(gh.indexOf('@Zebra') < gh.indexOf('No context'), 'the "No context" bucket sits last');
   }
 
+  console.log('--- Expected income pulled from Family Money ---');
+  {
+    const { JSDOM } = require('jsdom');
+    const gtdHtml = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    assert(gtdHtml.includes('space=eq.family'), 'only the Family space is queried');
+    const famBlock = gtdHtml.slice(gtdHtml.indexOf('const FamIncomeService'), gtdHtml.indexOf('const FAMRANGE_KEY'));
+    assert(!/space=eq\.(private|business|farm)/.test(famBlock), 'the expected-income query never touches the PIN-protected spaces');
+    assert(gtdHtml.includes('received_at=is.null'), 'money already received is excluded');
+
+    const iso = d => new Date(Date.now()+d*86400000).toISOString().slice(0,10);
+    const famRows = [
+      {id:'a', amount:'1400.00', currency:'GBP', on_date:iso(2),  week_date:iso(2),  person:'Tapiwa Salary', recurrence:'weekly'},
+      {id:'b', amount:'20000.00',currency:'GBP', on_date:iso(9),  week_date:iso(9),  person:'Rodney LH',     recurrence:'none'},
+      {id:'c', amount:'1400.00', currency:'GBP', on_date:iso(16), week_date:iso(16), person:'Tapiwa Salary', recurrence:'weekly'},
+      {id:'d', amount:'500.00',  currency:'USD', on_date:iso(45), week_date:iso(45), person:'Too far out',   recurrence:'none'}
+    ];
+    let famCalls = 0, lastPath = '';
+    const dom = new JSDOM(gtdHtml, {runScripts:'dangerously', url:'https://example.test/',
+      beforeParse(w){
+        w.fetch=(url)=>{
+          const u=String(url);
+          let payload='[]';
+          if(u.includes('fam_income')){ famCalls++; lastPath=u; payload=JSON.stringify(famRows); }
+          return Promise.resolve({ok:true,status:200,text:()=>Promise.resolve(payload),json:()=>Promise.resolve(JSON.parse(payload))});
+        };
+      }});
+    await new Promise(r=>setTimeout(r,600));
+    const w=dom.window, d2=w.document;
+    w.eval('AppState').data = w.eval('demoData')();
+    w.eval('CloudService').session={access_token:'AT', user:{id:'me', email:'r@x.com'}};
+    const FI = w.eval('FamIncomeService');
+
+    await FI.load(true);
+    assert(FI.rows.length === 4, 'family income rows loaded');
+    assert(lastPath.includes('space=eq.family') && lastPath.includes('received_at=is.null'), 'request scoped correctly');
+
+    // The reported requirement: 7-day and 30-day windows, from real money
+    assert(FI.sums(7).GBP === 1400, '7-day window sums only what is due within 7 days');
+    assert(FI.sums(30).GBP === 22800, '30-day window sums the month (got ' + FI.sums(30).GBP + ')');
+    assert(FI.sums(30).USD === undefined, 'an item beyond 30 days is excluded from both windows');
+    assert(FI.due(7).length === 1 && FI.due(30).length === 3, 'payment counts match the windows');
+
+    // Default range is 7 days, validated on read
+    w.localStorage.removeItem('gtdcc-famrange');
+    w.eval('AppState').famRange=null;
+    assert(w.eval('famRange()') === 7, 'defaults to 7 days');
+    w.localStorage.setItem('gtdcc-famrange','banana');
+    w.eval('AppState').famRange=null;
+    assert(w.eval('famRange()') === 7, 'a corrupt stored range falls back to 7, never throws');
+    w.eval('setFamRange')(30);
+    assert(w.localStorage.getItem('gtdcc-famrange') === '30', 'range persisted');
+    w.eval('setFamRange')(7);
+
+    // CLICK-THROUGH on the Focus dashboard
+    w.eval('go')('focus');
+    await new Promise(r=>setTimeout(r,300));
+    let vh = d2.getElementById('view').innerHTML;
+    assert(vh.includes('Expected in — Money'), 'Focus card labels the figure as coming from Money');
+    const M = (v) => w.eval('money')('GBP', v);
+    assert(vh.includes(M(1400)), 'Focus shows the 7-day figure by default');
+    assert(!vh.includes(M(22800)), '30-day figure not shown while on the 7-day range');
+    const tog30 = d2.querySelector('#view [data-famrange="30"]');
+    assert(tog30, '30d toggle rendered on Focus');
+    tog30.click();
+    await new Promise(r=>setTimeout(r,250));
+    vh = d2.getElementById('view').innerHTML;
+    assert(w.eval('famRange()') === 30, 'clicking 30d switches the range');
+    assert(vh.includes(M(22800)), 'Focus now shows the 30-day figure');
+    assert(d2.querySelector('#view [data-famrange="30"]').classList.contains('primary'), 'active range highlighted');
+
+    // CLICK-THROUGH on the Pipeline view
+    w.eval('AppState').settings=w.eval('AppState').settings||{};
+    w.eval('go')('finance');
+    await new Promise(r=>setTimeout(r,300));
+    vh = d2.getElementById('view').innerHTML;
+    assert(vh.includes('Expected in — Money'), 'Pipeline card also sourced from Money');
+    assert(vh.includes(M(22800)), 'Pipeline honours the same shared range');
+    const tog7 = d2.querySelector('#view [data-famrange="7"]');
+    assert(tog7, '7d toggle rendered on Pipeline');
+    tog7.click();
+    await new Promise(r=>setTimeout(r,250));
+    assert(w.eval('famRange()') === 7, 'range toggles from the Pipeline view too');
+    assert(/Net — expected in less committed out/.test(d2.getElementById('view').innerHTML), 'net compares real income against committed payments');
+
+    // Loading must not loop: a re-render inside the TTL makes no new request
+    const callsBefore = famCalls;
+    w.eval('render')(); await new Promise(r=>setTimeout(r,200));
+    w.eval('render')(); await new Promise(r=>setTimeout(r,200));
+    assert(famCalls === callsBefore, 'no refetch storm on re-render (calls ' + callsBefore + ' -> ' + famCalls + ')');
+
+    // Concurrent loads are single-flight
+    FI.loadedAt = 0;
+    const c2 = famCalls;
+    await Promise.all([FI.load(), FI.load(), FI.load()]);
+    assert(famCalls === c2 + 1, 'three concurrent loads issue exactly one request');
+
+    // Offline: cached figures survive a failed fetch
+    FI.writeCache();
+    const realApi = w.eval('CloudService').api;
+    w.eval('CloudService').api = () => Promise.reject(new TypeError('Failed to fetch'));
+    FI.rows=null; FI.loadedAt=0;
+    await FI.load(true);
+    w.eval('CloudService').api = realApi;
+    assert(FI.rows && FI.rows.length === 4, 'cached rows used when the network is down');
+    assert(FI.stale === true, 'stale data is flagged as such');
+  }
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
