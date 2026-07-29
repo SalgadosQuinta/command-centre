@@ -18,6 +18,48 @@ const json = (body: unknown, status = 200) =>
     headers: { ...cors, "Content-Type": "application/json" },
   });
 
+/* Pull complete objects out of a JSON array even when the surrounding document
+   is truncated mid-way. A long meeting-notes paste can exhaust the response
+   budget; losing the whole batch because the tail was cut is far worse than
+   handing back the tasks that did arrive. String-aware so braces inside task
+   titles and descriptions do not confuse the depth count. */
+function extractArray(src: string, key: string): Record<string, unknown>[] {
+  const marker = `"${key}"`;
+  const ki = src.indexOf(marker);
+  if (ki < 0) return [];
+  const br = src.indexOf("[", ki + marker.length);
+  if (br < 0) return [];
+  const out: Record<string, unknown>[] = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = br + 1; i < src.length; i++) {
+    const c = src[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{") { if (depth === 0) start = i; depth++; continue; }
+    if (c === "}") {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        try { out.push(JSON.parse(src.slice(start, i + 1))); } catch { /* incomplete tail object: drop it */ }
+        start = -1;
+      }
+      continue;
+    }
+    if (c === "]" && depth === 0) break;   // end of this array
+  }
+  return out;
+}
+
+function extractSummary(src: string): string {
+  const m = src.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (!m) return "";
+  try { return JSON.parse('"' + m[1] + '"'); } catch { return m[1]; }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -73,6 +115,8 @@ Extraction principles:
 - If the material shows the user is waiting on someone else, set suggested_status "waiting" and fill person.
 - If it is a request TO the user, suggested_status "next" when a date exists, otherwise "inbox".
 - priority: "high" only when urgency is explicit or implied by the rules; otherwise "normal".
+- description: ONE short sentence, under 20 words. Do not restate the title, do not quote the source, do not repeat links or attribution.
+- Extract EVERY task in the material, including ones near the end. Long lists are normal — never stop early or summarise the remainder.
 - summary: one sentence describing what the material is.
 
 Also extract money items when the material contains them:
@@ -112,7 +156,7 @@ Respond ONLY with JSON, no markdown fences, exactly this shape:
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 2000,
+        max_tokens: 16000,
         system,
         messages: [{ role: "user", content }],
       }),
@@ -129,12 +173,31 @@ Respond ONLY with JSON, no markdown fences, exactly this shape:
       .join("");
     const clean = raw.replace(/```json|```/g, "").trim();
 
+    const hitCeiling = d.stop_reason === "max_tokens";
+
     try {
       const parsed = JSON.parse(clean);
       if (!Array.isArray(parsed.tasks)) throw new Error("no tasks array");
+      if (hitCeiling) parsed.truncated = true;
       return json(parsed);
     } catch (_e) {
-      return json({ error: "Could not read the AI response", raw: clean }, 502);
+      // Truncated or otherwise malformed: return whatever objects completed
+      const tasks = extractArray(clean, "tasks");
+      const payments = extractArray(clean, "finance_payments");
+      const revenue = extractArray(clean, "finance_revenue");
+      const expenses = extractArray(clean, "expenses");
+      if (tasks.length || payments.length || revenue.length || expenses.length) {
+        return json({
+          summary: extractSummary(clean),
+          tasks,
+          finance_payments: payments,
+          finance_revenue: revenue,
+          expenses,
+          truncated: true,
+          recovered: true,
+        });
+      }
+      return json({ error: "Could not read the AI response", raw: clean.slice(0, 2000) }, 502);
     }
   } catch (e) {
     return json({ error: String(e) }, 500);

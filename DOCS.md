@@ -99,3 +99,33 @@ analysis. A name in that box is decisive: the task is created as Waiting for
 with that person, whether or not they have an account. Nothing is sent to the
 cloud silently — the toast says how many of the new tasks could also be pushed
 to a Tasks app via the task's own Delegate button.
+
+## Smart capture: long pastes (gtdcc-v49 / smart-capture v11)
+
+**Root cause of dropped tasks.** The function asked for `max_tokens: 2000`.
+A dozen tasks with prose descriptions exceed that, so the model's JSON was cut
+mid-object, `JSON.parse` threw, and the whole batch was discarded — the user saw
+a short list or an error, with no indication anything was missing.
+
+Three changes, all needed:
+
+1. `max_tokens` 2000 → **16000**. This alone covers any realistic paste.
+2. **`extractArray()` salvage.** If parsing still fails, complete objects are
+   recovered from the truncated `tasks` / `finance_*` / `expenses` arrays by
+   string-aware brace matching (braces and escaped quotes inside titles and
+   descriptions do not confuse the scanner). The incomplete tail object is
+   dropped. Response carries `truncated:true, recovered:true`.
+3. **Prompt**: descriptions capped at one sentence under 20 words, and an
+   explicit instruction to extract every task including those at the end.
+
+A response that completes but hits the ceiling (`stop_reason === "max_tokens"`)
+is also flagged `truncated`.
+
+The console shows a **CUT SHORT** band when `out.truncated` and always prints
+the task count in the section heading, so a short list is visible rather than
+assumed complete.
+
+**Note on the function source:** the repo copy was stale (v9) while v10 was
+live. The deployed source was recovered from the eszip sourcemap before
+editing, so nothing was regressed. `supabase/functions/smart-capture/index.ts`
+now matches deployed v11 — keep it that way.

@@ -914,6 +914,46 @@ function extractObj(src, name){
     assert(added.every(t=>(t.tags||[]).includes('smart-capture')), 'provenance retained');
   }
 
+  console.log('--- Smart capture: long pastes are not silently truncated ---');
+  {
+    const scSrc = fs.readFileSync(path.join(ROOT,'supabase','functions','smart-capture','index.ts'),'utf8');
+    assert(/max_tokens:\s*16000/.test(scSrc), 'response budget raised well above a long meeting-notes paste');
+    assert(!/max_tokens:\s*2000\b/.test(scSrc), 'the old 2000-token ceiling is gone');
+    assert(scSrc.includes('function extractArray'), 'partial-response salvage present');
+    assert(scSrc.includes('stop_reason === "max_tokens"'), 'a completed-but-capped response is flagged truncated');
+    assert(scSrc.includes('never stop early'), 'the prompt tells the model to extract every task');
+    assert(scSrc.includes('under 20 words'), 'descriptions kept short so long lists fit');
+
+    // Behavioural: the salvage helper, run against a genuinely truncated payload
+    const vm = require('vm');
+    const ctx = vm.createContext({JSON, console});
+    const fn = scSrc.slice(scSrc.indexOf('function extractArray'), scSrc.indexOf('Deno.serve'))
+      .replace(/:\s*Record<string, unknown>\[\]/g, '')
+      .replace(/\(src: string, key: string\)/, '(src, key)')
+      .replace(/\(src: string\): string/, '(src)');
+    vm.runInContext(fn, ctx);
+    const cut = '{"summary":"Four one-to-ones","tasks":[' +
+      '{"title":"Spin up the endpoint PoC","description":"a"},' +
+      '{"title":"Duplicate the VIP alert","description":"b"},' +
+      '{"title":"Send Talon proposal","description":"note {ref} on file"},' +
+      '{"title":"Fix the cracked domain admin passwo';
+    const got = vm.runInContext('extractArray', ctx)(cut, 'tasks');
+    assert(got.length === 3, 'complete tasks recovered from a truncated response (got ' + got.length + ')');
+    assert(got[0].title === 'Spin up the endpoint PoC', 'first recovered task intact');
+    assert(got[2].description.includes('{ref}'), 'a brace inside a string does not confuse the scanner');
+    assert(vm.runInContext('extractSummary', ctx)(cut) === 'Four one-to-ones', 'summary recovered too');
+    const whole = '{"tasks":[{"title":"A"},{"title":"B"}],"finance_payments":[{"name":"Rates"}]}';
+    assert(vm.runInContext('extractArray', ctx)(whole, 'tasks').length === 2, 'intact payloads still read correctly');
+    assert(vm.runInContext('extractArray', ctx)(whole, 'expenses').length === 0, 'a missing array yields nothing, not an error');
+    const escd = '{"tasks":[{"title":"Say \\"hello\\" to Luke"},{"title":"Second"}]}';
+    assert(vm.runInContext('extractArray', ctx)(escd, 'tasks').length === 2, 'escaped quotes do not end the string early');
+
+    // The console must say so rather than quietly showing a short list
+    const gtdSrc = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    assert(gtdSrc.includes('CUT SHORT'), 'the review screen warns when the analysis was capped');
+    assert(gtdSrc.includes('Proposed tasks (${tasks.length})'), 'the count is shown so a short list is obvious');
+  }
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

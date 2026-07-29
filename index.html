@@ -1955,9 +1955,12 @@ function openSmartCapture(prefill){
 function renderSmartResults(out){
   const tasks=out.tasks||[];
   const projs=ProjectService.all().filter(p=>p.status!=="completed");
-  if(!tasks.length){ $("#scResults").innerHTML=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">No actionable tasks found in that material.</p>`; return; }
+  if(!tasks.length){ $("#scResults").innerHTML=`<p style="color:var(--muted);font-size:12.5px;margin-top:10px">${out.truncated?"The analysis was cut short before any task could be read. Try pasting a smaller section.":"No actionable tasks found in that material."}</p>`; return; }
   $("#scResults").innerHTML=`
-    <div class="grouphead" style="margin-top:12px"><span class="eyebrow">Proposed tasks — untick any you don't want</span></div>
+    ${out.truncated?`<div class="healthband attn" style="margin-top:12px">
+      <span class="stateword">CUT SHORT</span>
+      <span style="color:var(--muted);font-size:12.5px">The analysis hit its length limit, so ${tasks.length} task${tasks.length===1?"":"s"} came back but there may be more at the end of that material. Add these, then paste the remainder and analyse again.</span></div>`:""}
+    <div class="grouphead" style="margin-top:12px"><span class="eyebrow">Proposed tasks (${tasks.length}) — untick any you don't want</span></div>
     ${peopleDatalist("scPeopleList")}
     ${tasks.map((t,i)=>`
     <div class="card" style="margin-bottom:8px;padding:10px 12px">
