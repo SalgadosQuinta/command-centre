@@ -226,3 +226,28 @@ normal case.
 
 **Test note:** the global `money()` renders "GBP 1400.00", not "£1,400" — the
 symbol version is a local inside the people view. Assert via `money()` itself.
+
+## Money row and coach count (gtdcc-v53)
+
+**Four figures on one row.** The 7/30 toggle is gone — there was room to show
+everything, so `famMoneyRowHTML()` renders four tiles: expected in and expected
+out, over 7 and 30 days. Used on both the Focus dashboard and Pipeline.
+
+`FamMoneyService` now loads three things in parallel: `fam_income`,
+`fam_bills` and `fam_bill_payments`. A bill instance counts as settled when a
+payment row exists for that **bill_id and that due_date** — bills recur, so
+matching on `bill_id` alone would wrongly clear future instances. Still
+single-flight, 2-minute TTL, per-user cache, and the UI says "Cached figures"
+when it falls back.
+
+Family space only, as before. Pipeline's Net is now real income less real bills
+from Family Money; its other two cards are relabelled "Pipeline in — 60 days
+(proposals)" and "Console outgoings — 30 days" so the two sources are never
+confused for one another.
+
+**Coach** takes 2 or 3 suggestions via a toggle in its header, persisted under
+`gtdcc-coach-n` and validated on read; the grid switches `c2`/`c3` to match.
+There are always at least three tips available, including on a clean system.
+
+Tiles stay two-across on narrow screens rather than collapsing to one, so the
+row still reads as a row on a phone.

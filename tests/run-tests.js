@@ -1055,29 +1055,39 @@ function extractObj(src, name){
     assert(gh.indexOf('@Zebra') < gh.indexOf('No context'), 'the "No context" bucket sits last');
   }
 
-  console.log('--- Expected income pulled from Family Money ---');
+  console.log('--- Money row: in/out over 7 and 30 days, from Family Money ---');
   {
     const { JSDOM } = require('jsdom');
     const gtdHtml = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
-    assert(gtdHtml.includes('space=eq.family'), 'only the Family space is queried');
-    const famBlock = gtdHtml.slice(gtdHtml.indexOf('const FamIncomeService'), gtdHtml.indexOf('const FAMRANGE_KEY'));
-    assert(!/space=eq\.(private|business|farm)/.test(famBlock), 'the expected-income query never touches the PIN-protected spaces');
-    assert(gtdHtml.includes('received_at=is.null'), 'money already received is excluded');
+    const famBlock = gtdHtml.slice(gtdHtml.indexOf('const FamMoneyService'), gtdHtml.indexOf('function famTileHTML'));
+    assert(/space=eq\.family/.test(famBlock), 'only the Family space is queried');
+    assert(!/space=eq\.(private|business|farm)/.test(famBlock), 'the money queries never touch the PIN-protected spaces');
+    assert(famBlock.includes('received_at=is.null'), 'money already received is excluded');
+    assert(famBlock.includes('archived=eq.false'), 'archived bills excluded');
 
     const iso = d => new Date(Date.now()+d*86400000).toISOString().slice(0,10);
-    const famRows = [
-      {id:'a', amount:'1400.00', currency:'GBP', on_date:iso(2),  week_date:iso(2),  person:'Tapiwa Salary', recurrence:'weekly'},
-      {id:'b', amount:'20000.00',currency:'GBP', on_date:iso(9),  week_date:iso(9),  person:'Rodney LH',     recurrence:'none'},
-      {id:'c', amount:'1400.00', currency:'GBP', on_date:iso(16), week_date:iso(16), person:'Tapiwa Salary', recurrence:'weekly'},
-      {id:'d', amount:'500.00',  currency:'USD', on_date:iso(45), week_date:iso(45), person:'Too far out',   recurrence:'none'}
+    const income = [
+      {id:'i1', amount:'1400.00', currency:'GBP', on_date:iso(2),  week_date:iso(2),  person:'Tapiwa Salary'},
+      {id:'i2', amount:'20000.00',currency:'GBP', on_date:iso(9),  week_date:iso(9),  person:'Rodney LH'},
+      {id:'i3', amount:'1400.00', currency:'GBP', on_date:iso(16), week_date:iso(16), person:'Tapiwa Salary'},
+      {id:'i4', amount:'500.00',  currency:'USD', on_date:iso(45), week_date:iso(45), person:'Too far out'}
     ];
-    let famCalls = 0, lastPath = '';
+    const bills = [
+      {id:'b1', name:'Council tax', amount:'200.00', currency:'GBP', due_date:iso(3)},
+      {id:'b2', name:'Broadband',   amount:'40.00',  currency:'GBP', due_date:iso(5)},
+      {id:'b3', name:'Insurance',   amount:'300.00', currency:'GBP', due_date:iso(20)},
+      {id:'b4', name:'Already paid',amount:'999.00', currency:'GBP', due_date:iso(4)}
+    ];
+    const pays = [{bill_id:'b4', due_date:iso(4)}];
+
+    let calls = 0;
     const dom = new JSDOM(gtdHtml, {runScripts:'dangerously', url:'https://example.test/',
       beforeParse(w){
         w.fetch=(url)=>{
-          const u=String(url);
-          let payload='[]';
-          if(u.includes('fam_income')){ famCalls++; lastPath=u; payload=JSON.stringify(famRows); }
+          const u=String(url); let payload='[]';
+          if(u.includes('fam_income')){ calls++; payload=JSON.stringify(income); }
+          else if(u.includes('fam_bill_payments')){ calls++; payload=JSON.stringify(pays); }
+          else if(u.includes('fam_bills')){ calls++; payload=JSON.stringify(bills); }
           return Promise.resolve({ok:true,status:200,text:()=>Promise.resolve(payload),json:()=>Promise.resolve(JSON.parse(payload))});
         };
       }});
@@ -1085,81 +1095,102 @@ function extractObj(src, name){
     const w=dom.window, d2=w.document;
     w.eval('AppState').data = w.eval('demoData')();
     w.eval('CloudService').session={access_token:'AT', user:{id:'me', email:'r@x.com'}};
-    const FI = w.eval('FamIncomeService');
+    const FM = w.eval('FamMoneyService');
+    await FM.load(true);
 
-    await FI.load(true);
-    assert(FI.rows.length === 4, 'family income rows loaded');
-    assert(lastPath.includes('space=eq.family') && lastPath.includes('received_at=is.null'), 'request scoped correctly');
+    assert(FM.income.length === 4 && FM.bills.length === 4, 'income and bills both loaded');
+    assert(FM.inSums(7).GBP === 1400, 'expected in, 7 days');
+    assert(FM.inSums(30).GBP === 22800, 'expected in, 30 days (got ' + FM.inSums(30).GBP + ')');
+    assert(FM.outSums(7).GBP === 240, 'expected out, 7 days excludes the settled bill (got ' + FM.outSums(7).GBP + ')');
+    assert(FM.outSums(30).GBP === 540, 'expected out, 30 days (got ' + FM.outSums(30).GBP + ')');
+    assert(FM.outDue(7).every(b=>b.id !== 'b4'), 'a bill with a payment for that due date is treated as settled');
+    assert(FM.inSums(30).USD === undefined, 'an item beyond 30 days is in neither window');
+    assert(FM.netSums(30).GBP === 22260, 'net is in less out (got ' + FM.netSums(30).GBP + ')');
 
-    // The reported requirement: 7-day and 30-day windows, from real money
-    assert(FI.sums(7).GBP === 1400, '7-day window sums only what is due within 7 days');
-    assert(FI.sums(30).GBP === 22800, '30-day window sums the month (got ' + FI.sums(30).GBP + ')');
-    assert(FI.sums(30).USD === undefined, 'an item beyond 30 days is excluded from both windows');
-    assert(FI.due(7).length === 1 && FI.due(30).length === 3, 'payment counts match the windows');
-
-    // Default range is 7 days, validated on read
-    w.localStorage.removeItem('gtdcc-famrange');
-    w.eval('AppState').famRange=null;
-    assert(w.eval('famRange()') === 7, 'defaults to 7 days');
-    w.localStorage.setItem('gtdcc-famrange','banana');
-    w.eval('AppState').famRange=null;
-    assert(w.eval('famRange()') === 7, 'a corrupt stored range falls back to 7, never throws');
-    w.eval('setFamRange')(30);
-    assert(w.localStorage.getItem('gtdcc-famrange') === '30', 'range persisted');
-    w.eval('setFamRange')(7);
-
-    // CLICK-THROUGH on the Focus dashboard
+    // All four figures on one row, on the Focus dashboard
     w.eval('go')('focus');
     await new Promise(r=>setTimeout(r,300));
     let vh = d2.getElementById('view').innerHTML;
-    assert(vh.includes('Expected in — Money'), 'Focus card labels the figure as coming from Money');
-    const M = (v) => w.eval('money')('GBP', v);
-    assert(vh.includes(M(1400)), 'Focus shows the 7-day figure by default');
-    assert(!vh.includes(M(22800)), '30-day figure not shown while on the 7-day range');
-    const tog30 = d2.querySelector('#view [data-famrange="30"]');
-    assert(tog30, '30d toggle rendered on Focus');
-    tog30.click();
-    await new Promise(r=>setTimeout(r,250));
-    vh = d2.getElementById('view').innerHTML;
-    assert(w.eval('famRange()') === 30, 'clicking 30d switches the range');
-    assert(vh.includes(M(22800)), 'Focus now shows the 30-day figure');
-    assert(d2.querySelector('#view [data-famrange="30"]').classList.contains('primary'), 'active range highlighted');
+    const M = v => w.eval('money')('GBP', v);
+    ['Expected in — 7 days','Expected out — 7 days','Expected in — 30 days','Expected out — 30 days']
+      .forEach(l=>assert(vh.includes(l), 'Focus shows tile: ' + l));
+    assert((vh.match(/famtile/g)||[]).length === 4, 'exactly four tiles');
+    assert(vh.includes('famrow') && vh.includes('grid c4'), 'tiles laid out on a single four-column row');
+    [1400,240,22800,540].forEach(v=>assert(vh.includes(M(v)), 'figure rendered: ' + M(v)));
 
-    // CLICK-THROUGH on the Pipeline view
-    w.eval('AppState').settings=w.eval('AppState').settings||{};
+    // Same row on Pipeline
     w.eval('go')('finance');
     await new Promise(r=>setTimeout(r,300));
     vh = d2.getElementById('view').innerHTML;
-    assert(vh.includes('Expected in — Money'), 'Pipeline card also sourced from Money');
-    assert(vh.includes(M(22800)), 'Pipeline honours the same shared range');
-    const tog7 = d2.querySelector('#view [data-famrange="7"]');
-    assert(tog7, '7d toggle rendered on Pipeline');
-    tog7.click();
-    await new Promise(r=>setTimeout(r,250));
-    assert(w.eval('famRange()') === 7, 'range toggles from the Pipeline view too');
-    assert(/Net — expected in less committed out/.test(d2.getElementById('view').innerHTML), 'net compares real income against committed payments');
+    assert((vh.match(/famtile/g)||[]).length === 4, 'Pipeline shows the same four tiles');
+    assert(vh.includes('Net — 30 days (Family Money)'), 'net card sourced from Family Money');
+    assert(vh.includes(M(22260)), 'net figure rendered');
+    assert(vh.includes('Pipeline in — 60 days (proposals)'), 'console proposal data is labelled as such');
 
-    // Loading must not loop: a re-render inside the TTL makes no new request
-    const callsBefore = famCalls;
+    // No refetch storm, single-flight, offline fallback
+    const before = calls;
     w.eval('render')(); await new Promise(r=>setTimeout(r,200));
     w.eval('render')(); await new Promise(r=>setTimeout(r,200));
-    assert(famCalls === callsBefore, 'no refetch storm on re-render (calls ' + callsBefore + ' -> ' + famCalls + ')');
-
-    // Concurrent loads are single-flight
-    FI.loadedAt = 0;
-    const c2 = famCalls;
-    await Promise.all([FI.load(), FI.load(), FI.load()]);
-    assert(famCalls === c2 + 1, 'three concurrent loads issue exactly one request');
-
-    // Offline: cached figures survive a failed fetch
-    FI.writeCache();
+    assert(calls === before, 'no refetch on re-render inside the TTL');
+    FM.loadedAt = 0;
+    const c2 = calls;
+    await Promise.all([FM.load(), FM.load(), FM.load()]);
+    assert(calls === c2 + 3, 'three concurrent loads issue one round of three requests, not nine');
+    FM.writeCache();
     const realApi = w.eval('CloudService').api;
     w.eval('CloudService').api = () => Promise.reject(new TypeError('Failed to fetch'));
-    FI.rows=null; FI.loadedAt=0;
-    await FI.load(true);
+    FM.income=null; FM.bills=null; FM.loadedAt=0;
+    await FM.load(true);
     w.eval('CloudService').api = realApi;
-    assert(FI.rows && FI.rows.length === 4, 'cached rows used when the network is down');
-    assert(FI.stale === true, 'stale data is flagged as such');
+    assert(FM.income && FM.income.length === 4 && FM.bills.length === 4, 'cached figures used when Family Money is unreachable');
+    assert(FM.stale === true, 'stale data flagged, and the UI says so');
+    assert(gtdHtml.includes('Cached figures'), 'cached state is stated in the UI, not hidden');
+  }
+
+  console.log('--- Coach: two or three suggestions ---');
+  {
+    const { JSDOM } = require('jsdom');
+    const gtdHtml = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    const dom = new JSDOM(gtdHtml, {runScripts:'dangerously', url:'https://example.test/',
+      beforeParse(w){ w.fetch=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve('[]'),json:()=>Promise.resolve({})}); }});
+    await new Promise(r=>setTimeout(r,600));
+    const w=dom.window, d2=w.document;
+    w.eval('AppState').data = w.eval('demoData')();
+    w.localStorage.removeItem('gtdcc-coach-hide');
+    w.localStorage.removeItem('gtdcc-coach-n');
+    w.eval('AppState').coachCount = null;
+    assert(w.eval('coachCount()') === 2, 'defaults to two suggestions');
+    w.localStorage.setItem('gtdcc-coach-n','banana');
+    w.eval('AppState').coachCount = null;
+    assert(w.eval('coachCount()') === 2, 'a corrupt stored count falls back to two, never throws');
+
+    w.eval('go')('focus');
+    await new Promise(r=>setTimeout(r,300));
+    let vh = d2.getElementById('view').innerHTML;
+    assert(vh.includes('Coach — two suggestions'), 'header reads two');
+    let tips = d2.querySelectorAll('#view .grid.c2 [data-go]');
+    assert(d2.querySelector('#view [data-coachn="3"]'), 'a 3 toggle is offered');
+
+    // CLICK-THROUGH to three
+    d2.querySelector('#view [data-coachn="3"]').click();
+    await new Promise(r=>setTimeout(r,250));
+    vh = d2.getElementById('view').innerHTML;
+    assert(w.eval('coachCount()') === 3, 'clicking 3 switches the count');
+    assert(vh.includes('Coach — three suggestions'), 'header updates to three');
+    assert(vh.includes('grid c3'), 'three suggestions laid out across three columns');
+    assert(w.localStorage.getItem('gtdcc-coach-n') === '3', 'choice persisted');
+    assert(d2.querySelector('#view [data-coachn="3"]').classList.contains('primary'), 'active count highlighted');
+
+    // and back to two
+    d2.querySelector('#view [data-coachn="2"]').click();
+    await new Promise(r=>setTimeout(r,250));
+    assert(w.eval('coachCount()') === 2, 'switches back to two');
+
+    // there must actually be enough tips to fill three slots
+    const many = w.eval('coachTips')({inbox:3,noNext:2,overdue:1,waitFollow:1,sinceWeekly:9});
+    assert(many.length >= 3, 'at least three suggestions are always available (' + many.length + ')');
+    const none = w.eval('coachTips')({inbox:0,noNext:0,overdue:0,waitFollow:0,sinceWeekly:0});
+    assert(none.length >= 3, 'even with a clean system there are three evergreen tips (' + none.length + ')');
   }
 
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
