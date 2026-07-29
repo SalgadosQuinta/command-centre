@@ -132,6 +132,19 @@ main#view{overflow-y:auto;padding:22px 26px 60px;background:var(--bg)}
 .empty{padding:26px 12px;text-align:center;color:var(--muted);font-size:13px}
 .empty .big{font-size:15px;color:var(--text);margin-bottom:4px}
 .grouphead{margin:16px 0 4px;display:flex;align-items:center;gap:8px}
+.ctxbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0 2px}
+.ctxchip{font-family:var(--mono);font-size:11px;border:1px solid var(--line2);background:none;color:var(--muted);border-radius:999px;padding:3px 10px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.ctxchip:hover{border-color:var(--accent);color:var(--text)}
+.ctxchip.on{background:var(--accent);border-color:var(--accent);color:#08101c;font-weight:600}
+.ctxchip .n{opacity:.65;font-size:10px}
+.subtog{flex:none;font-family:var(--mono);font-size:10.5px;border:1px solid var(--line2);background:none;color:var(--muted);border-radius:4px;padding:1px 6px;cursor:pointer;margin-top:2px}
+.subtog:hover{border-color:var(--accent);color:var(--text)}
+.subtog.all{color:var(--ok);border-color:var(--ok)}
+.subwrap{margin:0 0 6px 34px;padding:4px 0 6px;border-left:2px solid var(--line2)}
+.subwrap .trow{padding:5px 8px;border-bottom:none}
+.subwrap .trow .ttl{font-size:12.5px}
+.subadd{width:calc(100% - 16px);margin:2px 8px;font-size:12.5px;padding:5px 8px}
+.parentband{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--line2);border-radius:var(--r-sm);padding:6px 10px;margin-bottom:10px;font-size:12.5px;color:var(--muted)}
 .grouphead::after{content:"";flex:1;height:1px;background:var(--line)}
 
 /* ---- stats ---- */
@@ -412,6 +425,8 @@ const AppState = {
   calMode: "month",
   calCursor: null,           // Date for calendar navigation
   filters: { context:"", time:"", energy:"", priority:"", group:"context" },
+  ctxFilter: null,           // lazily restored array of selected contexts; [] = show all
+  expanded: {},              // taskId -> subtask list expanded in the action lists
   searchQuery: "",
   dirty: false,
   fileHandle: null,
@@ -478,7 +493,7 @@ function demoData(){
     {id:"p5",name:"Farm irrigation upgrade",desiredOutcome:"Drip irrigation covering the full orchard block",purpose:"Reduce water use and protect the young trees",status:"onhold",areaId:"area_business",owner:"Me",startDate:shift(-45),targetDate:shift(120),reviewDate:shift(14),notes:"Waiting on borehole survey.",createdAt:old(45),updatedAt:old(10)},
     {id:"p6",name:"Family holiday planning",desiredOutcome:"December holiday booked and paid for",purpose:"Protected family time",status:"someday",areaId:"area_personal",owner:"Me",startDate:null,targetDate:null,reviewDate:null,notes:"",createdAt:old(15),updatedAt:old(15)}
   ];
-  const mk=(id,title,st,extra)=>Object.assign({id,title,description:"",status:st,clarified:st!=="inbox",projectId:null,areaId:null,context:null,tags:[],priority:"normal",energy:"medium",estimatedMinutes:null,dueDate:null,scheduledDate:null,startDate:null,waitingFor:null,createdAt:old(5),updatedAt:old(2),completedAt:null,notes:"",subtasks:[],review:{lastReviewedAt:null,nextReviewAt:null}},extra||{});
+  const mk=(id,title,st,extra)=>Object.assign({id,title,description:"",status:st,clarified:st!=="inbox",projectId:null,areaId:null,context:null,tags:[],priority:"normal",energy:"medium",estimatedMinutes:null,dueDate:null,scheduledDate:null,startDate:null,waitingFor:null,createdAt:old(5),updatedAt:old(2),completedAt:null,notes:"",subtasks:[],parentId:null,review:{lastReviewedAt:null,nextReviewAt:null}},extra||{});
   d.tasks = [
     // Inbox (8)
     mk("i1","ISO 27001 statement of work","inbox",{createdAt:old(1)}),
@@ -791,7 +806,7 @@ const TaskService = {
       id:uid("task"), title:"", description:"", status:"inbox", clarified:false,
       projectId:null, areaId:null, context:null, tags:[], priority:"normal", energy:"medium",
       estimatedMinutes:null, dueDate:null, scheduledDate:null, startDate:null, waitingFor:null,
-      createdAt:nowISO(), updatedAt:nowISO(), completedAt:null, notes:"", subtasks:[],
+      createdAt:nowISO(), updatedAt:nowISO(), completedAt:null, notes:"", subtasks:[], parentId:null,
       review:{lastReviewedAt:null,nextReviewAt:null}
     }, fields||{});
     AppState.data.tasks.push(t); markDirty(); return t;
@@ -800,17 +815,44 @@ const TaskService = {
     const t=this.get(id); if(!t) return null;
     Object.assign(t, patch, {updatedAt:nowISO()}); markDirty(); return t;
   },
+  children(id){ return this.all().filter(t=>t.parentId===id); },
+  openChildren(id){ return this.children(id).filter(t=>!["completed","cancelled"].includes(t.status)); },
+  parentOf(t){ return t&&t.parentId ? this.get(t.parentId) : null; },
+  isChild(t){ return !!this.parentOf(t); },
+  hasChildren(id){ return this.children(id).length>0; },
+  /* Deliberately one level deep: a task with children cannot itself become a
+     subtask, which removes any possibility of cycles or orphan chains. */
+  canBeChildOf(id,parentId){
+    if(!id||!parentId||id===parentId) return false;
+    const p=this.get(parentId); if(!p) return false;
+    if(this.isChild(p)) return false;
+    if(this.hasChildren(id)) return false;
+    return true;
+  },
+  makeChild(id,parentId){
+    if(!this.canBeChildOf(id,parentId)) return false;
+    this.update(id,{parentId:parentId});
+    return true;
+  },
+  detach(id){ const t=this.get(id); if(!t||!t.parentId) return false; this.update(id,{parentId:null}); return true; },
   complete(id){
     const t=this.get(id); if(!t) return;
     const was={status:t.status,completedAt:t.completedAt};
+    const kids=this.openChildren(id);
+    const kidsWas=kids.map(k=>({id:k.id,status:k.status,completedAt:k.completedAt}));
     this.update(id,{status:"completed",completedAt:nowISO()});
-    toast("Completed","ok",{label:"Undo",fn:()=>{this.update(id,was); render();}});
+    // Finishing "Go to the shop" finishes the shopping list under it
+    kids.forEach(k=>this.update(k.id,{status:"completed",completedAt:nowISO()}));
+    toast(kids.length?("Completed with "+kids.length+" subtask"+(kids.length===1?"":"s")):"Completed","ok",
+      {label:"Undo",fn:()=>{this.update(id,was); kidsWas.forEach(k=>this.update(k.id,{status:k.status,completedAt:k.completedAt})); render();}});
   },
   remove(id){
     const i=AppState.data.tasks.findIndex(t=>t.id===id); if(i<0) return;
+    const orphans=this.children(id).map(k=>k.id);
+    orphans.forEach(k=>this.update(k,{parentId:null}));   // never orphan: children become standalone
     const [t]=AppState.data.tasks.splice(i,1); markDirty();
     toast("Deleted \u201C"+ (t.title.length>40?t.title.slice(0,40)+"…":t.title) +"\u201D","warn",
-      {label:"Undo",fn:()=>{AppState.data.tasks.splice(i,0,t); markDirty(); render();}});
+      {label:"Undo",fn:()=>{AppState.data.tasks.splice(i,0,t); orphans.forEach(k=>this.update(k,{parentId:id})); markDirty(); render();}});
   },
   captureLines(text){
     const lines=text.split(/\n+/).map(l=>l.trim()).filter(Boolean);
@@ -922,7 +964,7 @@ const GTDService = {
     return {score:s, reasons};
   },
   bestNext(f, limit=8){
-    let pool=TaskService.byStatus("next");
+    let pool=TaskService.byStatus("next").filter(t=>!TaskService.isChild(t));
     if(f.context) pool=pool.filter(t=>!t.context||t.context===f.context);
     if(f.energy) pool=pool.filter(t=>!t.energy||energyRank(t.energy)<=energyRank(f.energy));
     if(f.priority) pool=pool.filter(t=>t.priority===f.priority);
@@ -964,6 +1006,45 @@ const STATUS_LABEL = {inbox:"Inbox",next:"Next action",scheduled:"Scheduled",wai
 const VIEW_TITLES = {focus:"Focus",all:"All outstanding",inbox:"Inbox",clarify:"Clarify",next:"Next actions",projects:"Projects",waiting:"Waiting for",calendar:"Calendar",someday:"Someday / Maybe",reference:"Reference",review:"Review",settings:"Data & settings",search:"Search results",project:"Project"};
 
 function areaName(id){ return AppState.data.areas.find(a=>a.id===id)?.name||""; }
+/* ---- Context filter chips (Next actions). Persisted, but read lazily and
+   validated so a corrupt value can never become a boot input. ---- */
+const CTXF_KEY="gtdcc-ctxfilter";
+const NO_CTX="__none__";
+function ctxFilter(){
+  if(!Array.isArray(AppState.ctxFilter)){
+    let v=[];
+    try{ const raw=localStorage.getItem(CTXF_KEY); const p=raw?JSON.parse(raw):null;
+      if(Array.isArray(p)) v=p.filter(x=>typeof x==="string").slice(0,60); }catch(e){}
+    AppState.ctxFilter=v;
+  }
+  return AppState.ctxFilter;
+}
+function setCtxFilter(list){
+  AppState.ctxFilter=(Array.isArray(list)?list:[]).filter(x=>typeof x==="string");
+  try{ localStorage.setItem(CTXF_KEY,JSON.stringify(AppState.ctxFilter)); }catch(e){}
+}
+function toggleCtxFilter(c){
+  const cur=ctxFilter().slice(); const i=cur.indexOf(c);
+  if(i>=0) cur.splice(i,1); else cur.push(c);
+  setCtxFilter(cur);
+}
+function ctxKeyOf(t){ return t.context||NO_CTX; }
+function ctxLabel(k){ return k===NO_CTX?"No context":k; }
+function matchesCtxFilter(t){ const f=ctxFilter(); return !f.length || f.indexOf(ctxKeyOf(t))>=0; }
+function ctxBarHTML(pool){
+  const counts={};
+  pool.forEach(t=>{ const k=ctxKeyOf(t); counts[k]=(counts[k]||0)+1; });
+  const known=AppState.data.contexts.filter(c=>counts[c]);
+  const extra=Object.keys(counts).filter(k=>k!==NO_CTX&&known.indexOf(k)<0).sort();
+  const keys=known.concat(extra); if(counts[NO_CTX]) keys.push(NO_CTX);
+  if(!keys.length) return "";
+  const f=ctxFilter();
+  const chip=(k)=>`<button class="ctxchip ${f.indexOf(k)>=0?"on":""}" data-ctxchip="${esc(k)}" aria-pressed="${f.indexOf(k)>=0?"true":"false"}">${esc(ctxLabel(k))}<span class="n">${counts[k]}</span></button>`;
+  return `<div class="ctxbar" id="ctxBar"><span class="eyebrow" style="margin-right:2px">Context</span>
+    <button class="ctxchip ${f.length?"":"on"}" data-ctxchip="__all__" aria-pressed="${f.length?"false":"true"}">All<span class="n">${pool.length}</span></button>
+    ${keys.map(chip).join("")}
+    ${f.length?`<button class="btn ghost sm" id="ctxClear">Clear</button>`:""}</div>`;
+}
 function projName(id){ return ProjectService.get(id)?.name||""; }
 
 function taskRowHTML(t, opts={}){
@@ -981,16 +1062,32 @@ function taskRowHTML(t, opts={}){
   if(t.waitingFor?.person) meta.push(`<span class="m" style="color:var(--wait)">⏲ ${esc(t.waitingFor.person)}</span>`);
   for(const tg of (t.tags||[]).slice(0,3)) meta.push(`<span class="tag">${esc(tg)}</span>`);
   if(opts.extraMeta) meta.push(opts.extraMeta);
+  const kids=(opts.subs||opts.showSubCount)?TaskService.children(t.id):[];
+  const kdone=kids.filter(k=>k.status==="completed").length;
   const done=t.status==="completed";
   return `<div class="trow ${done?"done":""} ${isOver?"overdue-row":""}" data-task="${esc(t.id)}">
     <span class="prio ${esc(t.priority)}"></span>
     <button class="chk" data-complete="${esc(t.id)}" aria-label="${done?"Reopen":"Complete"} task">${done?'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M4 12l6 6 10-12"/></svg>':""}</button>
     <div class="body"><div class="ttl">${isOver?`<span class="ovbadge">OVERDUE</span> `:""}${esc(t.title)}</div>${meta.length?`<div class="meta">${meta.join("")}</div>`:""}</div>
+    ${opts.subs?`<button class="subtog ${kids.length&&kdone===kids.length?"all":""}" data-subtog="${esc(t.id)}" aria-expanded="${AppState.expanded[t.id]?"true":"false"}" aria-label="${AppState.expanded[t.id]?"Hide":"Show"} subtasks">${kids.length?`${kdone}/${kids.length}`:"+"} ${AppState.expanded[t.id]?"▾":"▸"}</button>`:""}
+  </div>`;
+}
+function subwrapHTML(t){
+  if(!AppState.expanded[t.id]) return "";
+  const kids=TaskService.children(t.id);
+  return `<div class="subwrap">${kids.map(k=>{
+    const done=k.status==="completed";
+    return `<div class="trow ${done?"done":""}" data-task="${esc(k.id)}">
+      <button class="chk" data-complete="${esc(k.id)}" aria-label="${done?"Reopen":"Complete"} subtask">${done?'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M4 12l6 6 10-12"/></svg>':""}</button>
+      <div class="body"><div class="ttl">${esc(k.title)}</div></div>
+    </div>`;}).join("")}
+    <input class="subadd" data-subadd="${esc(t.id)}" placeholder="Add item and press Enter" aria-label="Add subtask to ${esc(t.title)}">
   </div>`;
 }
 function listHTML(tasks, emptyMsg, opts){
   if(!tasks.length) return `<div class="empty">${esc(emptyMsg||"Nothing here.")}</div>`;
-  return `<div class="tasklist">${tasks.map(t=>taskRowHTML(t,opts)).join("")}</div>`;
+  const o=opts||{};
+  return `<div class="tasklist">${tasks.map(t=>taskRowHTML(t,o)+(o.subs?subwrapHTML(t):"")).join("")}</div>`;
 }
 
 const UI = {};
@@ -1041,7 +1138,7 @@ function focusFinanceHTML(){
       </div></div></div>`;
 }
 UI.all = function(){
-  const open=TaskService.all().filter(t=>!["completed","cancelled","someday"].includes(t.status)&&t.status!=="reference");
+  const open=TaskService.all().filter(t=>!["completed","cancelled","someday"].includes(t.status)&&t.status!=="reference"&&!TaskService.isChild(t));
   const tStr=todayStr();
   const grp=AppState.allGroup||"status";
   const cloudLinked=t=>t.cloud&&t.cloud.id&&!["done","declined"].includes(t.cloud.status)&&t.status==="waiting";
@@ -1209,7 +1306,7 @@ UI.clarify = function(){
 UI.next = function(){
   const f=AppState.filters;
   const range=AppState.nextRange||"all";
-  let tasks=TaskService.byStatus("next");
+  let tasks=TaskService.byStatus("next").filter(t=>!TaskService.isChild(t)); // subtasks show under their parent
   const tStr=todayStr();
   const dateOfTask=t=>t.dueDate||t.scheduledDate||null;
   if(range!=="all"){
@@ -1225,6 +1322,8 @@ UI.next = function(){
     }
     tasks=tasks.filter(t=>{ const ds=dateOfTask(t); return ds&&ds<=to&&(ds>=from||ds<tStr); }); // include overdue
   }
+  const ctxPool=tasks;
+  tasks=tasks.filter(matchesCtxFilter);
   const groups={};
   const rangeKey=t=>{
     const ds=dateOfTask(t);
@@ -1250,14 +1349,15 @@ UI.next = function(){
     : Object.keys(groups).sort();
   const rangeBtn=(r,label)=>`<button class="btn sm ${range===r?"primary":""}" data-nextrange="${r}">${label}</button>`;
   return `
-  <div class="viewhead"><div><h1>Next actions</h1><div class="sub">${tasks.length} actionable item${tasks.length===1?"":"s"}${range!=="all"?" — "+(range==="day"?"today":"this "+range)+" (overdue included)":""}</div></div>
+  <div class="viewhead"><div><h1>Next actions</h1><div class="sub">${tasks.length} actionable item${tasks.length===1?"":"s"}${ctxFilter().length?" in "+ctxFilter().length+" context"+(ctxFilter().length===1?"":"s"):""}${range!=="all"?" — "+(range==="day"?"today":"this "+range)+" (overdue included)":""}</div></div>
     <div class="viewactions">
       ${rangeBtn("all","All")}${rangeBtn("day","Day")}${rangeBtn("week","Week")}${rangeBtn("month","Month")}
       ${range==="all"?`<label class="eyebrow" style="align-self:center">Group by</label>
       <select id="groupSel" style="width:auto">${["context","project","area","priority","energy","due"].map(g=>`<option value="${g}" ${f.group===g?"selected":""}>${g[0].toUpperCase()+g.slice(1)}</option>`).join("")}</select>`:""}
       <button class="btn primary" id="newNextBtn">+ New action</button></div></div>
-  ${tasks.length? keys.map(k=>`<div class="grouphead"><span class="eyebrow" ${k==="Overdue"?'style="color:var(--danger)"':""}>${esc(k)}</span><span class="mono" style="font-size:10px;color:var(--faint)">${groups[k].length}</span></div><div class="card" style="padding:6px 10px">${listHTML(groups[k])}</div>`).join("")
-   : `<div class="card"><div class="empty"><div class="big">${range==="all"?"No next actions":"Nothing dated for "+(range==="day"?"today":"this "+range)}</div>${range==="all"?"Clarify your Inbox or capture something new.":"Undated actions are under All."}</div></div>`}`;
+  ${ctxBarHTML(ctxPool)}
+  ${tasks.length? keys.map(k=>`<div class="grouphead"><span class="eyebrow" ${k==="Overdue"?'style="color:var(--danger)"':""}>${esc(k)}</span><span class="mono" style="font-size:10px;color:var(--faint)">${groups[k].length}</span></div><div class="card" style="padding:6px 10px">${listHTML(groups[k],null,{subs:true})}</div>`).join("")
+   : `<div class="card"><div class="empty"><div class="big">${ctxFilter().length?"Nothing in the selected context"+(ctxFilter().length===1?"":"s"):range==="all"?"No next actions":"Nothing dated for "+(range==="day"?"today":"this "+range)}</div>${ctxFilter().length?"Clear the context filter to see everything else.":range==="all"?"Clarify your Inbox or capture something new.":"Undated actions are under All."}</div></div>`}`;
 };
 
 /* ---------------- PROJECTS ---------------- */
@@ -3247,12 +3347,18 @@ UI.taskDrawer = function(id){
   const projOpts=ProjectService.all().map(p=>`<option value="${esc(p.id)}" ${t.projectId===p.id?"selected":""}>${esc(p.name)}</option>`).join("");
   const areaOpts=AppState.data.areas.map(a=>`<option value="${esc(a.id)}" ${t.areaId===a.id?"selected":""}>${esc(a.name)}</option>`).join("");
   const w=t.waitingFor||{};
+  const par=TaskService.parentOf(t);
+  const kids=TaskService.children(id);
+  const kidsDone=kids.filter(k=>k.status==="completed").length;
   $("#modalHost").innerHTML=`
   <div class="overlay">
   <div class="drawer" role="dialog" aria-label="Task detail" style="left:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <span class="pill"><span class="dot" style="background:var(--accent)"></span>${esc(STATUS_LABEL[t.status]||t.status)}</span>
       <button class="btn ghost sm" data-close="1" aria-label="Close">✕ Close</button></div>
+    ${par?`<div class="parentband">Subtask of <b style="color:var(--text)">${esc(par.title)}</b>
+      <button class="btn ghost sm" id="tdOpenParent">Open parent</button>
+      <button class="btn ghost sm" id="tdDetach">Make standalone</button></div>`:""}
     <div class="field"><label>Title</label><input id="tdTitle" value="${esc(t.title)}"></div>
     <div class="field"><label>Description</label><textarea id="tdDesc">${esc(t.description)}</textarea></div>
     <div class="fieldrow">
@@ -3287,13 +3393,20 @@ UI.taskDrawer = function(id){
       <div class="field"><label>Follow-up date</label><input id="tdWFol" type="date" value="${esc(w.followUpDate||"")}"></div>
     </div>
     <div class="field"><label>Notes</label><textarea id="tdNotes">${esc(t.notes)}</textarea></div>
-    <div class="grouphead"><span class="eyebrow">Subtasks</span></div>
+    <div class="grouphead"><span class="eyebrow">Subtasks${kids.length?" — "+kidsDone+"/"+kids.length+" done":""}</span></div>
+    <div id="tdKids">${kids.map(k=>`<div class="trow" style="cursor:default">
+      <button class="chk" data-kidtoggle="${esc(k.id)}" aria-label="${k.status==="completed"?"Reopen":"Complete"} subtask" style="${k.status==="completed"?"background:var(--ok);border-color:var(--ok)":""}"></button>
+      <div class="body"><div class="ttl" style="${k.status==="completed"?"text-decoration:line-through;color:var(--muted)":""}">${esc(k.title)}</div></div>
+      <button class="btn ghost sm" data-kidopen="${esc(k.id)}" title="Open this subtask">open</button>
+      <button class="btn ghost sm" data-kiddetach="${esc(k.id)}" title="Make it a standalone task">detach</button></div>`).join("")}</div>
+    ${TaskService.isChild(t)?"":`<input id="tdNewKid" placeholder="Add a subtask (a real task) and press Enter" style="margin-top:6px">`}
+    <div class="grouphead"><span class="eyebrow">Quick checklist</span></div>
     <div id="tdSubs">${(t.subtasks||[]).map((s,i)=>`<div class="trow" style="cursor:default"><button class="chk ${s.done?"":""}" data-subtoggle="${i}" style="${s.done?"background:var(--ok);border-color:var(--ok)":""}"></button><div class="body"><div class="ttl" style="${s.done?"text-decoration:line-through;color:var(--muted)":""}">${esc(s.title)}</div></div><button class="btn ghost sm" data-subdel="${i}">✕</button></div>`).join("")}</div>
     <input id="tdNewSub" placeholder="Add subtask and press Enter" style="margin-top:6px">
     <div class="mono" style="font-size:10.5px;color:var(--faint);margin-top:12px">Created ${esc(fmtDT(t.createdAt))} · Updated ${esc(fmtDT(t.updatedAt))}${t.completedAt?" · Completed "+esc(fmtDT(t.completedAt)):""}</div>
     <div class="modalfoot">
       <div class="left"><button class="btn danger sm" id="tdDelete">Delete</button>
-      <button class="btn sm" id="tdConvert">Convert to project</button>${CloudService.signedIn()&&!t.cloud?`<button class="btn sm" id="tdDelegate">Delegate…</button>`:""}${t.cloud?`<span class="mono" style="font-size:10.5px;color:var(--accent);align-self:center">☁ ${esc(t.cloud.assignee)} · ${esc(t.cloud.status.replace("_"," "))}</span>`:""}</div>
+      <button class="btn sm" id="tdConvert">Convert to project</button>${kids.length?"":`<button class="btn sm" id="tdSubOf">${par?"Move to another task":"Make subtask of…"}</button>`}${CloudService.signedIn()&&!t.cloud?`<button class="btn sm" id="tdDelegate">Delegate…</button>`:""}${t.cloud?`<span class="mono" style="font-size:10.5px;color:var(--accent);align-self:center">☁ ${esc(t.cloud.assignee)} · ${esc(t.cloud.status.replace("_"," "))}</span>`:""}</div>
       <button class="btn sm ${t.status==="completed"?"":"primary"}" id="tdComplete">${t.status==="completed"?"Reopen":"Complete"}</button>
       <button class="btn primary sm" id="tdSave">Save</button>
     </div>
@@ -3338,8 +3451,59 @@ UI.taskDrawer = function(id){
       t.subtasks=t.subtasks||[]; t.subtasks.push({title:e.target.value.trim(),done:false});
       markDirty(); UI.taskDrawer(id);
     }});
+  const tdOP=$("#tdOpenParent"); if(tdOP) tdOP.onclick=()=>{ save(); UI.taskDrawer(par.id); };
+  const tdDet=$("#tdDetach"); if(tdDet) tdDet.onclick=()=>{ save(); TaskService.detach(id); UI.taskDrawer(id); render(); toast("Now a standalone task","ok"); };
+  const tdSO=$("#tdSubOf"); if(tdSO) tdSO.onclick=()=>{ save(); UI.subtaskPicker(id); };
+  const tdNK=$("#tdNewKid"); if(tdNK) tdNK.addEventListener("keydown",e=>{
+    if(e.key==="Enter"&&e.target.value.trim()){
+      save();
+      const p=TaskService.get(id);
+      TaskService.create({title:e.target.value.trim(), status:"next", clarified:true, parentId:id,
+        context:p.context, projectId:p.projectId, areaId:p.areaId});
+      UI.taskDrawer(id); render();
+    }});
+  $$("#tdKids [data-kidtoggle]").forEach(b=>b.onclick=()=>{
+    const k=TaskService.get(b.dataset.kidtoggle); if(!k) return;
+    if(k.status==="completed") TaskService.update(k.id,{status:"next",completedAt:null});
+    else TaskService.update(k.id,{status:"completed",completedAt:nowISO()});
+    UI.taskDrawer(id); render();
+  });
+  $$("#tdKids [data-kidopen]").forEach(b=>b.onclick=()=>{ save(); UI.taskDrawer(b.dataset.kidopen); });
+  $$("#tdKids [data-kiddetach]").forEach(b=>b.onclick=()=>{ TaskService.detach(b.dataset.kiddetach); UI.taskDrawer(id); render(); toast("Subtask is now standalone","ok"); });
   $$("#tdSubs [data-subtoggle]").forEach(b=>b.onclick=()=>{const i=+b.dataset.subtoggle; t.subtasks[i].done=!t.subtasks[i].done; markDirty(); UI.taskDrawer(id);});
   $$("#tdSubs [data-subdel]").forEach(b=>b.onclick=()=>{t.subtasks.splice(+b.dataset.subdel,1); markDirty(); UI.taskDrawer(id);});
+};
+
+/* Pick a parent for an existing task — "convert this into a subtask of…" */
+UI.subtaskPicker = function(id, q){
+  const t=TaskService.get(id); if(!t) return;
+  const query=(q||"").trim().toLowerCase();
+  const cands=TaskService.all()
+    .filter(c=>TaskService.canBeChildOf(id,c.id))
+    .filter(c=>!["completed","cancelled"].includes(c.status))
+    .filter(c=>!query||[c.title,c.context,projName(c.projectId)].filter(Boolean).join(" ").toLowerCase().includes(query))
+    .sort((a,b)=>(TaskService.children(b.id).length-TaskService.children(a.id).length)||a.title.localeCompare(b.title))
+    .slice(0,40);
+  $("#modalHost").innerHTML=`
+  <div class="overlay"><div class="modal" role="dialog" aria-label="Choose a parent task">
+    <h2>Make “${esc(t.title.length>44?t.title.slice(0,44)+"…":t.title)}” a subtask of…</h2>
+    <div class="field"><input id="spQ" placeholder="Search tasks" value="${esc(q||"")}" autocomplete="off"></div>
+    <div style="max-height:46vh;overflow:auto">${cands.length?`<div class="tasklist">${cands.map(c=>{
+      const n=TaskService.children(c.id).length;
+      return `<div class="trow" data-pick="${esc(c.id)}"><span class="prio ${esc(c.priority)}"></span>
+        <div class="body"><div class="ttl">${esc(c.title)}</div><div class="meta">${c.context?`<span class="m ctx">${esc(c.context)}</span>`:""}<span class="m">${esc(STATUS_LABEL[c.status]||c.status)}</span>${n?`<span class="m">${n} subtask${n===1?"":"s"}</span>`:""}</div></div></div>`;}).join("")}</div>`
+      : `<div class="empty">No eligible task. A task that is already a subtask, or one that already has subtasks of its own, cannot be a parent.</div>`}</div>
+    <div class="modalfoot"><div class="left"></div><button class="btn ghost" data-close="1">Cancel</button></div>
+  </div></div>`;
+  const sq=$("#spQ");
+  sq.focus();
+  sq.addEventListener("input",debounce(()=>UI.subtaskPicker(id,sq.value),200));
+  $$("#modalHost [data-pick]").forEach(el=>el.onclick=()=>{
+    const pid=el.dataset.pick;
+    if(!TaskService.makeChild(id,pid)){ toast("That task cannot be the parent","warn"); return; }
+    closeModal(); render(); toast("Moved under “"+TaskService.get(pid).title+"”","ok");
+  });
+  $$("#modalHost [data-close]").forEach(b=>b.onclick=()=>{ closeModal(); UI.taskDrawer(id); });
 };
 
 UI.projectModal = function(id){
@@ -3502,7 +3666,7 @@ function render(){
   const co=$("#cntOverdue"); if(co){ co.textContent=odn||""; co.classList.toggle("overdue",odn>0); co.style.display=odn?"":"none"; co.title=odn?odn+" overdue":""; }
   setCnt("#cntInbox",TaskService.byStatus("inbox").length, h.inbox>4);
   setCnt("#cntClarify",TaskService.byStatus("inbox").length,false);
-  setCnt("#cntNext",TaskService.byStatus("next").length);
+  setCnt("#cntNext",TaskService.byStatus("next").filter(t=>!TaskService.isChild(t)).length);
   setCnt("#cntProjects",ProjectService.active().length, h.noNext>0);
   setCnt("#cntWaiting",TaskService.byStatus("waiting").length, h.waitFollow>0);
   setCnt("#cntSomeday",TaskService.byStatus("someday").length);
@@ -3604,6 +3768,26 @@ function bindView(){
   $$("#view [data-project]").forEach(el=>el.addEventListener("click",()=>{AppState.currentProjectId=el.dataset.project; go("project");}));
   $$("#view [data-project]").forEach(el=>el.addEventListener("keydown",e=>{if(e.key==="Enter"){AppState.currentProjectId=el.dataset.project; go("project");}}));
   $$("#view [data-go]").forEach(b=>b.addEventListener("click",()=>go(b.dataset.go)));
+  $$("#view [data-subtog]").forEach(b=>b.addEventListener("click",e=>{
+    e.stopPropagation();
+    const k=b.dataset.subtog;
+    AppState.expanded[k]=!AppState.expanded[k];
+    render();
+  }));
+  $$("#view [data-subadd]").forEach(inp=>{
+    inp.addEventListener("click",e=>e.stopPropagation());
+    inp.addEventListener("keydown",e=>{
+      e.stopPropagation();
+      if(e.key!=="Enter"||!inp.value.trim()) return;
+      const pid=inp.dataset.subadd, p=TaskService.get(pid); if(!p) return;
+      TaskService.create({title:inp.value.trim(), status:"next", clarified:true, parentId:pid,
+        context:p.context, projectId:p.projectId, areaId:p.areaId});
+      AppState.expanded[pid]=true;
+      render();
+      const again=document.querySelector('#view [data-subadd="'+CSS.escape(pid)+'"]');
+      if(again) again.focus();
+    });
+  });
 
   if(v==="focus"){
     const F=AppState.filters;
@@ -3654,6 +3838,13 @@ function bindView(){
     $$("#view [data-allgroup]").forEach(b=>b.onclick=()=>{AppState.allGroup=b.dataset.allgroup; render();});
   }
   if(v==="next"){
+    $$("#view [data-ctxchip]").forEach(b=>b.addEventListener("click",e=>{
+      e.stopPropagation();
+      const k=b.dataset.ctxchip;
+      if(k==="__all__") setCtxFilter([]); else toggleCtxFilter(k);
+      render();
+    }));
+    const cc=$("#ctxClear"); if(cc) cc.onclick=()=>{ setCtxFilter([]); render(); };
     const g=$("#groupSel"); if(g) g.onchange=()=>{AppState.filters.group=g.value; render();};
     $$("#view [data-nextrange]").forEach(b=>b.onclick=()=>{AppState.nextRange=b.dataset.nextrange; render();});
     const nb=$("#newNextBtn"); if(nb) nb.onclick=()=>UI.captureModal({status:"next",clarified:true,context:AppState.data.settings.defaultContext});

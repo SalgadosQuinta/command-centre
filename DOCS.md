@@ -42,3 +42,32 @@ comments, attachment viewing (signed URLs from the `receipts` bucket,
 GTD/task data is covered by the Supabase layers in
 `family-money/BACKUP-AND-RESILIENCE.md`; additionally take a local data-file
 backup from Settings whenever the weekly JSON export runs.
+
+## Next actions — context filters and subtasks (gtdcc-v47)
+
+**Context filter chips.** A chip row sits at the top of Next actions, one chip
+per context actually in use (plus "No context" and "All"), each with a live
+count. Chips multi-select — tapping two contexts shows both lists. The
+selection persists in `localStorage` under `gtdcc-ctxfilter`, but is read
+lazily through `ctxFilter()` and validated on every read, so a corrupt value
+can never become a boot input.
+
+**Task hierarchy.** Tasks carry `parentId`. Any task can be converted into a
+subtask of another via **Make subtask of…** in the task drawer, or created
+directly under a parent from the inline box in the expanded list row (the
+"go to the shop → shopping list" pattern). Subtasks inherit the parent's
+context, project and area.
+
+Deliberately **one level only**: `TaskService.canBeChildOf()` refuses a parent
+that is already a subtask, and refuses to demote a task that has subtasks of
+its own. That removes cycles and chains entirely.
+
+Behaviour:
+- Subtasks are hidden from Next actions, All outstanding, the Focus engine
+  pool and the sidebar count — they appear under their parent.
+- The parent row shows a `done/total` toggle that expands the checklist.
+- Completing a parent completes its open subtasks (one undo restores all).
+- Deleting a parent detaches its children rather than orphaning them.
+- The old lightweight `subtasks[]` checklist remains, now labelled
+  **Quick checklist** in the drawer, for throwaway items that never need to
+  be real tasks.

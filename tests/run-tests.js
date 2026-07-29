@@ -614,6 +614,180 @@ function extractObj(src, name){
     const gtdA = gtdHtml;
     assert(gtdA.includes('data-view="all"') && gtdA.includes('["all","All outstanding"]'), 'view reachable from sidebar and More tiles');
   }
+  console.log('--- Next actions: context filter toggles ---');
+  {
+    const { JSDOM } = require('jsdom');
+    const gtdHtml = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    const dom = new JSDOM(gtdHtml, {runScripts:'dangerously', url:'https://example.test/',
+      beforeParse(w){ w.fetch=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve('[]'),json:()=>Promise.resolve({})}); }});
+    await new Promise(r=>setTimeout(r,600));
+    const w=dom.window, d=w.document;
+    w.eval('AppState').data = w.eval('demoData')();
+    w.eval('setCtxFilter')([]);
+    w.eval('AppState').nextRange='all';
+    w.eval('go')('next');
+    await new Promise(r=>setTimeout(r,200));
+    let vh = d.getElementById('view').innerHTML;
+    assert(vh.includes('id="ctxBar"'), 'context chip bar renders at the top of Next actions');
+    assert(vh.includes('data-ctxchip="@Calls"') && vh.includes('data-ctxchip="@Computer"'), 'a chip per context in use');
+    assert(vh.includes('data-ctxchip="__all__"'), 'an All chip is present');
+    const allChip = d.querySelector('#view [data-ctxchip="__all__"]');
+    assert(allChip && allChip.classList.contains('on'), 'All is selected when no filter set');
+
+    // CLICK-THROUGH: the chip must actually filter the rendered list
+    const before = d.querySelectorAll('#view .tasklist > .trow').length;
+    const callsChip = d.querySelector('#view [data-ctxchip="@Calls"]');
+    assert(callsChip, 'the @Calls chip is in the live DOM');
+    callsChip.click();
+    await new Promise(r=>setTimeout(r,200));
+    assert(w.eval('ctxFilter()').indexOf('@Calls') >= 0, 'clicking a chip records the selection');
+    vh = d.getElementById('view').innerHTML;
+    const after = d.querySelectorAll('#view .tasklist > .trow').length;
+    assert(after > 0 && after < before, 'list narrows to the chosen context (' + before + ' -> ' + after + ')');
+    assert(!vh.includes('Draft the ISO 27001 scope statement'), 'a @Computer action is filtered out');
+    assert(vh.includes('Call the borehole surveyor'), 'a @Calls action is retained');
+    assert(d.querySelector('#view [data-ctxchip="@Calls"]').classList.contains('on'), 'chosen chip shown active after re-render');
+
+    // multi-select is additive
+    d.querySelector('#view [data-ctxchip="@Computer"]').click();
+    await new Promise(r=>setTimeout(r,200));
+    assert(w.eval('ctxFilter()').length === 2, 'chips multi-select rather than replace');
+    const both = d.querySelectorAll('#view .tasklist > .trow').length;
+    assert(both > after, 'selecting a second context widens the list');
+
+    // persistence + guarded restore
+    assert(JSON.parse(w.localStorage.getItem('gtdcc-ctxfilter')).length === 2, 'selection persisted to localStorage');
+    w.localStorage.setItem('gtdcc-ctxfilter', '{"not":"an array"}');
+    w.eval('AppState').ctxFilter = null;
+    assert(Array.isArray(w.eval('ctxFilter()')) && w.eval('ctxFilter()').length === 0, 'corrupt persisted filter falls back to empty, never throws');
+
+    // Clear returns everything
+    w.eval('setCtxFilter')(['@Calls']);
+    w.eval('render')();
+    await new Promise(r=>setTimeout(r,200));
+    const clr = d.getElementById('ctxClear');
+    assert(clr, 'Clear button appears while a filter is active');
+    clr.click();
+    await new Promise(r=>setTimeout(r,200));
+    assert(w.eval('ctxFilter()').length === 0, 'Clear resets the filter');
+    assert(d.querySelectorAll('#view .tasklist > .trow').length === before, 'full list restored after clearing');
+  }
+
+  console.log('--- Subtasks: convert a task into a subtask of another ---');
+  {
+    const { JSDOM } = require('jsdom');
+    const gtdHtml = fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
+    const dom = new JSDOM(gtdHtml, {runScripts:'dangerously', url:'https://example.test/',
+      beforeParse(w){ w.fetch=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve('[]'),json:()=>Promise.resolve({})}); }});
+    await new Promise(r=>setTimeout(r,600));
+    const w=dom.window, d=w.document;
+    w.eval('AppState').data = w.eval('demoData')();
+    w.eval('setCtxFilter')([]);
+    w.eval('AppState').nextRange='all';
+    const TS = w.eval('TaskService');
+    const shop = TS.create({title:'Go to the farm shop', status:'next', clarified:true, context:'@Errands'});
+    const milk = TS.create({title:'Buy dip for the cattle', status:'next', clarified:true, context:'@Errands'});
+
+    assert(TS.get(shop.id).parentId === null, 'new tasks start standalone');
+    assert(TS.makeChild(milk.id, shop.id), 'a task can be converted into a subtask of another');
+    assert(TS.get(milk.id).parentId === shop.id, 'parent recorded on the child');
+    assert(TS.children(shop.id).length === 1, 'parent lists its child');
+
+    // one level only — no cycles, no chains
+    const deeper = TS.create({title:'Ask about the price', status:'next'});
+    assert(!TS.canBeChildOf(deeper.id, milk.id), 'a subtask cannot itself take subtasks');
+    assert(!TS.canBeChildOf(shop.id, milk.id), 'a parent cannot be nested under its own child');
+    assert(!TS.canBeChildOf(shop.id, shop.id), 'a task cannot be its own parent');
+    TS.remove(deeper.id);
+
+    // hidden from the top-level lists, counted under the parent
+    w.eval('go')('next');
+    await new Promise(r=>setTimeout(r,200));
+    let vh = d.getElementById('view').innerHTML;
+    assert(vh.includes('Go to the farm shop'), 'the parent shows in Next actions');
+    assert(!vh.includes('Buy dip for the cattle'), 'the subtask is not listed separately while collapsed');
+    assert(vh.includes('data-subtog="'+shop.id+'"'), 'parent row carries a subtask toggle');
+    assert(vh.includes('0/1'), 'toggle shows subtask progress');
+
+    // CLICK-THROUGH: expand reveals the checklist and the inline add box
+    d.querySelector('#view [data-subtog="'+shop.id+'"]').click();
+    await new Promise(r=>setTimeout(r,200));
+    vh = d.getElementById('view').innerHTML;
+    assert(w.eval('AppState').expanded[shop.id] === true, 'toggle records the expanded state');
+    assert(vh.includes('Buy dip for the cattle'), 'expanding reveals the subtask');
+    assert(d.querySelector('#view [data-subadd="'+shop.id+'"]'), 'inline add box present under the parent');
+
+    // CLICK-THROUGH: add a checklist item straight from the list
+    const inp = d.querySelector('#view [data-subadd="'+shop.id+'"]');
+    inp.value = 'Buy fencing staples';
+    inp.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Enter', bubbles:true}));
+    await new Promise(r=>setTimeout(r,220));
+    assert(TS.children(shop.id).length === 2, 'inline add creates a real subtask');
+    const staples = TS.children(shop.id).find(k=>k.title==='Buy fencing staples');
+    assert(staples && staples.context === '@Errands', 'new subtask inherits the parent context');
+    assert(d.getElementById('view').innerHTML.includes('Buy fencing staples'), 'new subtask renders immediately');
+
+    // completing the parent closes the list under it, undoably
+    TS.complete(shop.id);
+    assert(TS.children(shop.id).every(k=>k.status==='completed'), 'completing the parent completes its open subtasks');
+    TS.update(shop.id,{status:'next',completedAt:null});
+    TS.children(shop.id).forEach(k=>TS.update(k.id,{status:'next',completedAt:null}));
+
+    // deleting a parent must not orphan children
+    const doomed = TS.create({title:'Temp parent', status:'next'});
+    const kid = TS.create({title:'Temp child', status:'next', parentId:doomed.id});
+    TS.remove(doomed.id);
+    assert(TS.get(kid.id) && TS.get(kid.id).parentId === null, 'children of a deleted parent become standalone, not orphans');
+    TS.remove(kid.id);
+
+    // counts and other roll-ups exclude subtasks
+    const nextCount = TS.byStatus('next').filter(t=>!TS.isChild(t)).length;
+    w.eval('render')();
+    await new Promise(r=>setTimeout(r,150));
+    const badge = d.getElementById('cntNext');
+    assert(badge && Number(badge.textContent) === nextCount, 'the Next actions badge counts parents only');
+    const allHtml = w.eval('UI').all();
+    assert(!allHtml.includes('Buy dip for the cattle'), 'All outstanding lists the parent, not its checklist items');
+
+    // drawer: parent banner, child list, detach, and the picker
+    w.eval('UI').taskDrawer(milk.id);
+    await new Promise(r=>setTimeout(r,150));
+    let dh = d.getElementById('modalHost').innerHTML;
+    assert(dh.includes('Subtask of') && dh.includes('Go to the farm shop'), 'drawer states which task it sits under');
+    assert(d.getElementById('tdDetach'), 'Make standalone button offered on a subtask');
+    d.getElementById('tdDetach').click();
+    await new Promise(r=>setTimeout(r,150));
+    assert(TS.get(milk.id).parentId === null, 'detach returns the task to the top level');
+
+    w.eval('UI').taskDrawer(milk.id);
+    await new Promise(r=>setTimeout(r,150));
+    const subOf = d.getElementById('tdSubOf');
+    assert(subOf, 'standalone task offers "Make subtask of…"');
+    subOf.click();
+    await new Promise(r=>setTimeout(r,200));
+    dh = d.getElementById('modalHost').innerHTML;
+    assert(dh.includes('a subtask of'), 'picker modal opens');
+    const pick = d.querySelector('#modalHost [data-pick="'+shop.id+'"]');
+    assert(pick, 'the intended parent is offered in the picker');
+    pick.click();
+    await new Promise(r=>setTimeout(r,200));
+    assert(TS.get(milk.id).parentId === shop.id, 'picking a parent converts the task into its subtask');
+
+    // parent drawer: real children listed separately from the quick checklist
+    w.eval('UI').taskDrawer(shop.id);
+    await new Promise(r=>setTimeout(r,150));
+    dh = d.getElementById('modalHost').innerHTML;
+    assert(dh.includes('id="tdKids"') && dh.includes('Buy dip for the cattle'), 'parent drawer lists its subtasks');
+    assert(dh.includes('id="tdNewKid"'), 'parent drawer can add another subtask');
+    assert(dh.includes('Quick checklist') && dh.includes('id="tdSubs"'), 'the old lightweight checklist is retained alongside');
+    assert(!dh.includes('id="tdSubOf"'), 'a task that already has subtasks is not offered as a child');
+    const kidToggle = d.querySelector('#modalHost [data-kidtoggle]');
+    assert(kidToggle, 'subtasks tickable from the parent drawer');
+    kidToggle.click();
+    await new Promise(r=>setTimeout(r,150));
+    assert(TS.children(shop.id).some(k=>k.status==='completed'), 'ticking a subtask in the drawer completes it');
+  }
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
